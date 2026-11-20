@@ -1,4 +1,6 @@
+__pycache__/
+/output/
 .env
 .codex-python/
 *.manifest.json
-__pycache__/
+

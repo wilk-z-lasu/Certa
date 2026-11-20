@@ -2,7 +2,7 @@
 
 Build a personalized daily overview from reusable event overviews, then deliver it as text and audio. Categorize source stories, group coverage of the same event with a small model, and use a larger model to check the evidence and create an event overview before personalizing the result for listeners.
 
-The repository currently contains the challenge brief and article dataset; there is no application implementation yet. All tasks below are open. Requirements come from [the challenge brief](Sourcera-Track-Description.md), [project instructions](AGENTS.md), and [dataset notes](liquid-briefing-data/README.txt).
+The [local pipeline](README.md) offers JSONL stages for categorization (C01, C02, C06) and event grouping (C03, C04). Database integration and live Luna evaluation are pending. Requirements come from [the challenge brief](Sourcera-Track-Description.md), [project instructions](AGENTS.md), and [dataset notes](liquid-briefing-data/README.txt).
 
 ## Pipeline and terminology
 
@@ -60,7 +60,7 @@ Only validated event overview revisions enter the listener retrieval pool. A pro
 
 ## MVP: story categories and event grouping with a small model
 
-- [ ] **C01 · P0 · Define a shared topic taxonomy.** Start with economy and central banks, companies and stocks, currencies, crypto, technology and AI, politics and world, and other news. Allow multiple topics per article, with separate language, geography, and entity fields. **Depends on:** F02. **Done when:** each topic has a description and representative labeled examples.
+- [x] **C01 · P0 · Define a shared topic taxonomy.** Start with economy and central banks, companies and stocks, currencies, crypto, technology and AI, politics and world, and other news. Allow multiple topics per article, with separate language, geography, and entity fields. **Depends on:** F02. **Done when:** each topic has a description and representative labeled examples.
 
 - [ ] **C02 · P0 · Categorize each source story.** Map publisher categories into the taxonomy, then use article text and an inexpensive classifier where tags are missing or ambiguous. Persist categories, method, and uncertainty on each story before event grouping. Do not use the supplied POSITIVE/NEGATIVE tags as trust signals. **Depends on:** F03, C01. **Done when:** a reviewed sample across all feeds and languages has recorded errors and corrections, and uncertain classifications remain identifiable.
 
