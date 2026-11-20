@@ -1,5 +1,11 @@
 # VoxNews
 
+## Run the hackathon demo offline
+
+Copy [the demo ZIP](output/voxnews-offline-demo.zip) to the presentation computer, extract the entire archive, and open **index.html** in a browser. The two recordings, transcripts, per-sentence evidence, searchable event catalogue and claim source logs work from disk. Only links out to publishers and official releases require internet access. The presentation computer needs no Python, Ollama, model weights, GPU or API key.
+
+The bundle is a fixed snapshot for playback and evidence inspection. The headlines recording has two claims in about 17 seconds. The rates recording has five in about 37 seconds. Live editing and listener-specific research selection use the Python commands below.
+
 ## Categorize the source feeds
 
 From the repository root, run with Python 3.9 or newer.
@@ -104,3 +110,31 @@ The model packet contains at most one short excerpt per selected article, up to 
 SQLite caches rules and validated model responses. The `verified_event` table preserves event revisions referenced by older transcripts. Each listener reads the resulting snapshot, so generating another profile incurs zero verification-model calls. Full article bodies stay local. Delete the licensed feeds and derived local outputs after the event as required by the [dataset terms](liquid-briefing-data/README.txt).
 
 To price live use, pass `--prices` with a JSON object keyed by each model ID. Each entry takes numeric `input`, `cached` and `output` rates in USD per million tokens. Missing prices or token counts produce an unknown cost. The summary reports extraction and review separately, measured wall time by stage, and a 10× model-cost projection with its assumptions. [Full-corpus results and claim audit](VERIFICATION_EVALUATION.md)
+
+## Build and inspect event overviews
+
+The overview consumes a saved verification snapshot, category handoff and the matching licensed feeds. The build, editor and export use the Python standard library. With the prepared hackathon inputs, run these commands from the repository root.
+
+```powershell
+python -m voxnews.overview build --verified output/overview-demo/verification.json --db output/offline-demo/event-overviews.sqlite3
+python -m voxnews.overview serve --db output/offline-demo/event-overviews.sqlite3
+```
+
+Open `http://127.0.0.1:8173/` on the editor machine. Each dossier covers available developments, background, mechanisms, figures, timeline, implications, reactions, uncertainty and outlook. The editor can select depth, topic, preferred source language and focus. Language selection prioritizes available source evidence in that language. For example, to inspect the producer-price event and retain its evidence for a script writer, run the following in another shell.
+
+```powershell
+python -m voxnews.overview show --db output/offline-demo/event-overviews.sqlite3 --event us-producer-prices --depth technical --focus figures --format markdown --output output/ppi-writer.md
+python -m voxnews.overview list --db output/offline-demo/event-overviews.sqlite3 --disputes
+```
+
+Every item has a stable claim ID, evidence role and source log. Article references include permalink, edition hash and exact character range. Official evidence identifies the release version and cell or paragraph. Conflicting figures, possible disagreements, revisions and challenges reported by one outlet carry distinct flags. Disputed material remains in the editor packet with its evidence even when the chosen length or focus would otherwise omit it. Internal writer packets can include exact source passages and stay with the team.
+
+The demo handoff covers 1,740 articles in 1,493 events across seven topics. It uses reporting-origin groups plus four editorially reviewed joins. Further coverage of the same story can remain in separate groups. Of 70,172 research items, five have approved wording. The 26 flags in this snapshot are challenges reported within articles. The rules also detect certain cross-source disagreements when sufficient comparable evidence is present. The automated tests include two publishers reporting different quarterly revenue figures.
+
+To regenerate the browser bundle, use the same verification snapshot and the recorded briefing directories. The exporter checks the spoken script against its approved evidence, checks WAV duration and sentence timing, then packages the source logs and audio. Generated outputs live in `output/` and must be copied separately from a source checkout.
+
+```powershell
+python -m voxnews.overview export-demo --db output/offline-demo/event-overviews.sqlite3 --verified output/overview-demo/verification.json --briefing output/trust-headlines --briefing output/trust-rates --output output/voxnews-offline-demo.zip
+```
+
+Building and reading overviews from the saved handoffs makes zero model calls. The separate `synthesize` command is the only overview operation that contacts Ollama. It requires an explicitly selected installed model on the enrichment machine. Generating new upstream event groups or live model reviews has the separate dependencies documented above.

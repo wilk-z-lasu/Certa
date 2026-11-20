@@ -35,8 +35,9 @@ def timestamp(value, *, allow_date=False):
     return result.astimezone(UTC)
 
 
-def read_jsonl(path):
+def indexed_jsonl(path):
     with path.open("rb") as file:
+        offset = 0
         for number, line in enumerate(file, 1):
             location = f"{path.name}:{number}"
             try:
@@ -45,7 +46,13 @@ def read_jsonl(path):
                     raise ValueError("expected a JSON object")
             except (ValueError, RecursionError) as error:
                 raise ValueError(f"{location}: {error}") from error
-            yield location, row
+            yield location, row, offset, len(line)
+            offset += len(line)
+
+
+def read_jsonl(path):
+    for location, row, _, _ in indexed_jsonl(path):
+        yield location, row
 
 
 def string_field(row, field):

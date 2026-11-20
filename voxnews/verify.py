@@ -15,7 +15,7 @@ from . import claim_rules
 from .categorization import validate_article
 from .claim_models import ClaimModels, excerpt
 from .event_candidates import fingerprint
-from .group_events import read_jsonl, timestamp
+from .group_events import indexed_jsonl, read_jsonl, timestamp
 from .luna import MODEL, ModelError, canonical_json
 from .official_releases import DEFAULT_PACK, ReleaseIndex, digest, number, safe_url, validate_dimensions
 
@@ -42,13 +42,13 @@ def write_atomic(path, contents):
             temp.unlink(missing_ok=True)
 
 
-def load_feeds(directory, start, before):
+def load_feeds(directory, start, before, *, include_locations=False):
     paths = sorted(directory.glob("*.jsonl"))
     if not paths:
         raise ValueError("no input feeds")
     ids, articles = set(), {}
     for path in paths:
-        for location, row in read_jsonl(path):
+        for location, row, offset, size in indexed_jsonl(path):
             try:
                 validate_article(row)
                 aid = row["$id"]
@@ -66,6 +66,9 @@ def load_feeds(directory, start, before):
                                  "headline": row.get("headline") or "", "language": row["language"],
                                  "publisher": (row.get("publication") or {}).get("name") or path.stem,
                                  "text_content": body, "body_hash": fingerprint(body)}
+                if include_locations:
+                    articles[aid].update(excerpt=row.get("excerpt") or "", author=row.get("source") or "",
+                                         feed_file=path.name, byte_offset=offset, byte_length=size)
             except (ValueError, TypeError, AttributeError) as error:
                 raise ValueError(f"{location}: {error}") from error
     return articles, ids
