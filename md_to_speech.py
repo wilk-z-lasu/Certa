@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import wave
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,8 @@ DEFAULT_MODEL_ID = "eleven_multilingual_v2"
 DEFAULT_OUTPUT_FORMAT = "mp3_44100_128"
 DEFAULT_CHUNK_SIZE = 4500
 API_BASE = "https://api.elevenlabs.io/v1/text-to-speech"
+ENV_FILE = Path(__file__).resolve().with_name(".env")
+NEWS_SAMPLE_RATE = 24000
 
 
 def load_dotenv(path: Path) -> None:
@@ -165,7 +168,7 @@ def synthesize_chunk(
         url,
         data=body,
         method="POST",
-        headers={"xi-api-key": api_key, "Content-Type": "application/json", "Accept": "audio/mpeg"},
+        headers={"xi-api-key": api_key, "Content-Type": "application/json"},
     )
     for attempt in range(retries + 1):
         try:
@@ -195,9 +198,78 @@ def synthesize_chunk(
     raise RuntimeError("Speech generation failed after retries")
 
 
+def generate_news_audio(directory: Path, expected_script: str | None = None) -> Path:
+    """Render the saved briefing with the configured ElevenLabs voice."""
+    load_dotenv(ENV_FILE)
+    voice_id = os.getenv("ELEVENLABS_VOICE_ID", "").strip()
+    if not voice_id or voice_id == "your_voice_id_here":
+        raise ValueError("Set ELEVENLABS_VOICE_ID in .env.")
+    model_id = os.getenv("ELEVENLABS_MODEL_ID") or DEFAULT_MODEL_ID
+
+    source = directory / "script.md"
+    raw = source.read_bytes()
+    script = raw.decode("utf-8-sig")
+    if expected_script is not None and script.splitlines() != expected_script.splitlines():
+        raise ValueError("The saved script has changed. Generate your briefing again.")
+    narration = markdown_to_text(script)
+    if not narration:
+        raise ValueError("script.md must contain text to narrate.")
+
+    output = directory / "news.wav"
+    sidecar = output.with_suffix(".manifest.json")
+    metadata = {
+        "source_file": str(source.resolve()),
+        "script_sha256": hashlib.sha256(raw).hexdigest(),
+        "narration_sha256": hashlib.sha256(narration.encode("utf-8")).hexdigest(),
+        "voice_id": voice_id,
+        "model": model_id,
+        "sample_rate": NEWS_SAMPLE_RATE,
+        "spoken_characters": len(narration),
+    }
+    if sidecar.is_file() and output.is_file():
+        try:
+            saved = json.loads(sidecar.read_text(encoding="utf-8"))
+        except ValueError:
+            saved = None
+        if isinstance(saved, dict) and all(saved.get(key) == value for key, value in metadata.items()):
+            if saved.get("audio_sha256") == hashlib.sha256(output.read_bytes()).hexdigest():
+                return output
+
+    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    if not api_key or api_key == "your_api_key_here":
+        raise ValueError("Set ELEVENLABS_API_KEY in .env.")
+    chunks = split_long_text(narration, DEFAULT_CHUNK_SIZE)
+    request_ids = []
+    with tempfile.TemporaryDirectory(dir=directory) as temp:
+        staged = Path(temp) / output.name
+        with wave.open(str(staged), "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(NEWS_SAMPLE_RATE)
+            for chunk in chunks:
+                pcm, request_id = synthesize_chunk(
+                    chunk, api_key, voice_id, model_id, f"pcm_{NEWS_SAMPLE_RATE}", 240, 1,
+                )
+                if len(pcm) % 2 or pcm.startswith((b"ID3", b"RIFF")):
+                    raise RuntimeError("Unexpected audio format from ElevenLabs.")
+                audio.writeframes(pcm)
+                request_ids.append(request_id)
+            duration = round(audio.getnframes() / NEWS_SAMPLE_RATE, 2)
+
+        metadata.update({
+            "duration_seconds": duration,
+            "audio_sha256": hashlib.sha256(staged.read_bytes()).hexdigest(),
+            "request_ids": request_ids,
+        })
+        info = Path(temp) / sidecar.name
+        info.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+        staged.replace(output)
+        info.replace(sidecar)
+    return output
+
+
 def main() -> int:
-    script_dir = Path(__file__).resolve().parent
-    load_dotenv(script_dir / ".env")
+    load_dotenv(ENV_FILE)
 
     parser = argparse.ArgumentParser(
         description="Turn a Markdown file into an MP3 using ElevenLabs Text to Speech."
