@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from build_preai import build_preai
+from generate_script import ScriptError, generate_script
 
 DIRECTORY = Path(__file__).resolve().parent / "user_data"
 
@@ -31,10 +32,13 @@ button:disabled{background:#d6ddd5;color:#49584b;cursor:default}
 <p>Choose at least 5 categories for your briefing.</p>
 <form><div id="choices"></div><footer><button disabled>Save interests</button>
 <output id="count">0 selected · Choose 5 more</output></footer></form><p role="status"></p></section>
-<h1 id="loading" tabindex="-1" hidden>your personalized news is loading</h1></main>
+<h1 id="loading" tabindex="-1" hidden>your personalized news is loading</h1>
+<h1 id="ready" tabindex="-1" hidden>Your news script is ready</h1></main>
 <script>
 const form=document.querySelector('form'), choices=document.querySelector('#choices'),
 button=form.querySelector('button'), statusLine=document.querySelector('[role=status]');
+const picker=document.querySelector('#picker'), loading=document.querySelector('#loading'),
+ready=document.querySelector('#ready');
 const selected=()=>Array.from(choices.querySelectorAll(':checked'),box=>box.value);
 form.onchange=()=>{
   const n=selected().length;
@@ -57,17 +61,27 @@ async function load(){
 }
 form.onsubmit=async event=>{
   event.preventDefault();
+  if (button.disabled) return;
+  button.disabled=true;
+  picker.hidden=true;
+  loading.hidden=false;
+  loading.focus();
+  let errorMessage;
   try {
     const response=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selected())});
-    if (!response.ok) {
-      statusLine.textContent=await response.text();
+    if (response.ok) {
+      loading.hidden=true;
+      ready.hidden=false;
+      ready.focus();
       return;
     }
-    document.querySelector('#picker').hidden=true;
-    const loading=document.querySelector('#loading');
-    loading.hidden=false;
-    loading.focus();
-  } catch {statusLine.textContent='Could not save your interests. Please try again.'}
+    errorMessage=await response.text();
+  } catch {errorMessage='Could not prepare your briefing. Please try again.'}
+  loading.hidden=true;
+  picker.hidden=false;
+  button.disabled=false;
+  button.focus();
+  statusLine.textContent=errorMessage;
 };
 load();
 </script></html>"""
@@ -122,7 +136,14 @@ class Picker(BaseHTTPRequestHandler):
         except (OSError, ValueError) as error:
             self.log_error("Could not generate preAI.md: %s", error)
             return self.reply(500, "Your choices were saved, but briefing preparation failed. Please retry.")
-        self.reply(200, "Your interests have been saved.")
+        try:
+            generate_script(DIRECTORY)
+        except ScriptError as error:
+            return self.reply(422, str(error))
+        except (OSError, UnicodeError) as error:
+            self.log_error("Could not generate script.md: %s", error)
+            return self.reply(500, "Could not write your briefing script. Please retry.")
+        self.reply(200, "Saved user_data/script.md")
 
 
 if __name__ == "__main__":
