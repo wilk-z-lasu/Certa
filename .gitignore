@@ -1,1 +1,5 @@
-/.env
+.env
+.codex-python/
+*.mp3
+*.manifest.json
+__pycache__/
