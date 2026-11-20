@@ -1,0 +1,10 @@
+{
+  "ONS": {"name":"Office for National Statistics","hosts":["www.ons.gov.uk"],"series":{"GB":["CPI","CPIH","core CPI"]},"catalogue":"https://www.ons.gov.uk/releasecalendar","rss":"https://www.ons.gov.uk/releasecalendar?limit=100&release-type=type-published&rss=&sort=date-newest"},
+  "BoE": {"name":"Bank of England","hosts":["www.bankofengland.co.uk"],"series":{"GB":["Bank Rate"]},"catalogue":"https://www.bankofengland.co.uk/news/latest-and-upcoming","rss":"https://www.bankofengland.co.uk/rss/news"},
+  "Destatis": {"name":"Statistisches Bundesamt","hosts":["www.destatis.de"],"series":{"DE":["CPI","HICP"]},"catalogue":"https://www.destatis.de/DE/Presse/_inhalt.html","rss":"https://www.destatis.de/SiteGlobals/Functions/RSSFeed/DE/RSSNewsfeed/Aktuell.xml"},
+  "Bundesbank": {"name":"Deutsche Bundesbank","hosts":["www.bundesbank.de"],"series":{"DE":["bank lending"]},"catalogue":"https://www.bundesbank.de/en/statistics"},
+  "CBS": {"name":"Statistics Netherlands","hosts":["www.cbs.nl","opendata.cbs.nl"],"series":{"NL":["CPI","HICP"]},"catalogue":"https://www.cbs.nl/en-gb/publication-calendar","api":"https://www.cbs.nl/en-gb/our-services/open-data","rss":"https://www.cbs.nl/nl-nl/rss-feeds/alle-nieuwsberichten"},
+  "DNB": {"name":"De Nederlandsche Bank","hosts":["www.dnb.nl"],"series":{"NL":["bank lending"]},"catalogue":"https://www.dnb.nl/en/statistics/"},
+  "ECB": {"name":"European Central Bank","hosts":["www.ecb.europa.eu"],"series":{"EA":["deposit facility rate"]},"catalogue":"https://www.ecb.europa.eu/press/govcdec/mopo/html/index.en.html","rss":"https://www.ecb.europa.eu/rss/press.html"},
+  "Eurostat": {"name":"Eurostat","hosts":["ec.europa.eu"],"series":{"EA":["HICP"]},"catalogue":"https://ec.europa.eu/eurostat/web/main/news/euro-indicators"}
+}

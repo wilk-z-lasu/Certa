@@ -59,3 +59,48 @@ python -m voxnews.group_events --candidates-only --output output/event-candidate
 - The Responses API receives derived comparisons only, with `store=false`. Article text, source IDs, permalinks, and author names stay local. Cache entries in `output/luna-decisions.sqlite3` retain validated verdicts by model, prompt version, and feature fingerprint. Cache hits can be replayed without an API key. Remove local corpus artifacts after the event according to the dataset terms.
 
 The CLI prints counts, elapsed time, and an estimate based on reported Luna token use. See the [event grouping evaluation](EVENT_GROUPING_EVALUATION.md) for the candidate results and the status of live-model verification.
+
+## Verify claims and listen to their evidence
+
+Verify grouped events against their source articles and dated official releases. The bundled pack supports offline replay. Choose the same source window used for event grouping.
+
+```powershell
+python -m voxnews.verify --events output/events.jsonl --before 2026-11-20
+python -m voxnews.trust_briefing --profile headlines --out-dir output/trust-headlines
+python -m voxnews.trust_briefing --profile rates --out-dir output/trust-rates
+```
+
+Open the generated `index.html`. Each sentence has a playback button and expandable article and official evidence. The headlines profile selects up to two events. The rates profile leads with policy decisions and includes more detail. Use `--region GB` to select a region or `--language de` or `--language nl` for localized numeric claims. Add `--wav` on Windows with pywin32 and an installed voice for that language to export audio with sentence timestamps. The HTML also supports browser speech.
+
+For an offline run using the earlier candidate-stage handoff, substitute `--origins output/event-candidates.jsonl` for `--events output/events.jsonl`. This keeps confirmed translations together and treats each reporting origin as its own provisional event. A run without either input groups only identical bodies. The summary identifies which mode ran.
+
+### Official sources and article claims
+
+1. List the agencies and their release calendars with `python -m voxnews.official_releases sources`. RSS discovery works for ONS, BoE, Destatis, CBS and the ECB. The registry also links Eurostat, Bundesbank and DNB catalogues.
+2. Find dated release candidates, then open the linked bulletin or decision. The calendars and feed titles are discovery aids. The evidence is a specific observation or paragraph in the published release.
+3. Import the organizers' releases as reviewed JSONL records using the format in [the bundled release pack](voxnews/official/observations.jsonl). Each observation contains geography, measure, reference period, comparison basis, decimal percent and table cell or paragraph location. Supply the issuer, dated HTTPS URL, stable release ID, vintage and timezone-aware availability time. A correction gets a new availability time and a complete replacement set of observations for that release ID. The registry limits each issuer to its domains and series.
+
+```powershell
+python -m voxnews.official_releases discover --from 2026-11-13 --before 2026-11-20 --output output/release-candidates.jsonl
+python -m voxnews.official_releases archive
+python -m voxnews.official_releases import-ons --release-id uk-cpi-2026-10 --output output/ons-release.jsonl
+python -m voxnews.verify --origins output/event-candidates.jsonl --pack output/ons-release.jsonl --before 2026-11-20
+```
+
+The archive caches official bytes by URL and SHA-256. Use `--refresh` to fetch again and retain changed content. The ONS importer reads the actual Table 1 CSV headers and checks its cells against the curated pack before writing an expanded pack, including the other issuers. Other agencies currently use reviewed observations. A repeated `--pack` argument combines distinct packs. RSS endpoints carry recent entries only, so use the agency archives or supplied releases for an older week.
+
+### Model routing and costs
+
+Rules check article passages and official cells first. The verifier compares the release available at reporting time with the one available at the briefing cutoff. It holds conflicts, missing releases, preliminary figures, and unmatched revisions. An event with insufficient grouping evidence is held. The final script uses approved wording and claim IDs. The JSON snapshot includes held claims and the reasons.
+
+To enable Luna extraction and stronger review, set `OPENAI_API_KEY` and supply a review model available to that account. This example budgets ten unresolved or audit events. `--audit-every 20` places a reproducible sample of automatic passes in the review queue.
+
+```powershell
+python -m voxnews.verify --events output/events.jsonl --before 2026-11-20 --model-events 10 --review-model $env:VOXNEWS_REVIEW_MODEL --audit-every 20
+```
+
+The model packet contains at most one short excerpt per selected article, up to 22 words each and six excerpts per event. The small model proposes claims and flags forecasts, advice, and ambiguous evidence. The reviewer must cite numbered passages. Official figures also require a matching official cell and a percent value present in the article evidence. Unresolved or disputed claims stay out of the script. Reviewed English reporting can enter with publisher attribution. Other-language narration currently uses the numeric templates.
+
+SQLite caches rules and validated model responses. The `verified_event` table preserves event revisions referenced by older transcripts. Each listener reads the resulting snapshot, so generating another profile incurs zero verification-model calls. Full article bodies stay local. Delete the licensed feeds and derived local outputs after the event as required by the [dataset terms](liquid-briefing-data/README.txt).
+
+To price live use, pass `--prices` with a JSON object keyed by each model ID. Each entry takes numeric `input`, `cached` and `output` rates in USD per million tokens. Missing prices or token counts produce an unknown cost. The summary reports extraction and review separately, measured wall time by stage, and a 10× model-cost projection with its assumptions. [Full-corpus results and claim audit](VERIFICATION_EVALUATION.md)
