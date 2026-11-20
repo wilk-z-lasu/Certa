@@ -1,6 +1,4 @@
 .env
 .codex-python/
-*.mp3
-user_data/news.wav
 *.manifest.json
 __pycache__/
