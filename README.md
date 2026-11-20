@@ -1,5 +1,13 @@
 # VoxNews
 
+## Personalized news audio
+
+Run `python generate_news_audio.py` to narrate `user_data/script.md` using the listener preferences in `user_data/UserInfo.md`. The app also starts narration when it displays a newly generated script. Listen in the app or open `user_data/news.wav`. The companion `news.manifest.json` records the journalist, selection keywords, voice ID, source hashes, and measured duration.
+
+The ten ElevenLabs journalists cover five English accents (American, British, Irish, Indian, and French), with a male and female presenter for each. To request an accent or narrator gender, add a line such as `Accent: Irish` or `Narrator gender: female` to the profile. Selection prioritizes the requested accent, then narrator gender, then topic and style keywords. Ties use catalog order. A listener's own gender does not set the narrator's gender.
+
+Use the ElevenLabs account that owns the IDs in `journalist_voices.json`. Daily narration uses its Text to Speech permission. The one-time `design_journalists.py` command provisions missing IDs with Voice Design and resumes after an interruption. Unchanged narration reuses the saved WAV.
+
 ## Markdown to speech with ElevenLabs
 
 `md_to_speech.py` converts a Markdown file to an MP3 with ElevenLabs Text to Speech. It uses Python's standard library, so no Python packages are needed.

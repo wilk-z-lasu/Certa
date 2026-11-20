@@ -1,0 +1,150 @@
+[
+  {
+    "name": "Nora Blake",
+    "gender": "female",
+    "accent": "American",
+    "style": "Financial technology correspondent. Brisk, clear mid-register delivery with precise articulation of numbers and company names.",
+    "keywords": [
+      "finance",
+      "tech",
+      "technology",
+      "companies",
+      "earnings",
+      "markets",
+      "business",
+      "stocks"
+    ],
+    "voice_id": "9JG7a0unPVfJanGlFyUk"
+  },
+  {
+    "name": "Simon Hale",
+    "gender": "male",
+    "accent": "American",
+    "style": "Public affairs anchor. Measured bass-baritone, restrained emphasis and patient explanations of policy.",
+    "keywords": [
+      "politics",
+      "policy",
+      "government",
+      "elections",
+      "measured"
+    ],
+    "voice_id": "tgF9JNZioegdCX2Dbe7P"
+  },
+  {
+    "name": "Eleanor West",
+    "gender": "female",
+    "accent": "British",
+    "style": "Science desk editor. Warm alto with deliberate pauses around evidence and uncertainty.",
+    "keywords": [
+      "science",
+      "health",
+      "research",
+      "medicine",
+      "calm",
+      "evidence"
+    ],
+    "voice_id": "F3ZCoHNsMph4b5GBLePU"
+  },
+  {
+    "name": "Adrian Wells",
+    "gender": "male",
+    "accent": "British",
+    "style": "Economics editor. Dry, rounded baritone, evenly paced, with authoritative but conversational explanations of figures.",
+    "keywords": [
+      "economy",
+      "inflation",
+      "banking",
+      "rates",
+      "economics",
+      "analytical"
+    ],
+    "voice_id": "oILGKxlsWWkBGzrqWkWV"
+  },
+  {
+    "name": "Maeve Quinn",
+    "gender": "female",
+    "accent": "Irish",
+    "style": "Arts correspondent. Expressive lower register, nimble phrasing, lively but grounded storytelling.",
+    "keywords": [
+      "cinema",
+      "film",
+      "arts",
+      "culture",
+      "music",
+      "storytelling"
+    ],
+    "voice_id": "gq3HP4LVMSqlP3Z5NLYl"
+  },
+  {
+    "name": "Ronan Bell",
+    "gender": "male",
+    "accent": "Irish",
+    "style": "Sports journalist. Bright tenor, quick rhythmic delivery and crisp timing for scores and results.",
+    "keywords": [
+      "sports",
+      "football",
+      "racing",
+      "energetic",
+      "fast"
+    ],
+    "voice_id": "CRFz4gnhnbxSP7mFOKuJ"
+  },
+  {
+    "name": "Anika Das",
+    "gender": "female",
+    "accent": "Indian",
+    "style": "Climate correspondent. Clear, even alto with a thoughtful cadence and precise scientific diction.",
+    "keywords": [
+      "climate",
+      "energy",
+      "environment",
+      "sustainability",
+      "thoughtful"
+    ],
+    "voice_id": "wZGWQTbd65Pz2xwduvBm"
+  },
+  {
+    "name": "Dev Raman",
+    "gender": "male",
+    "accent": "Indian",
+    "style": "Industry correspondent. Resonant medium register and steady explanatory pacing, careful with technical terms.",
+    "keywords": [
+      "manufacturing",
+      "engineering",
+      "industry",
+      "logistics",
+      "supply",
+      "industrial"
+    ],
+    "voice_id": "n76l9R7BYD8SR1VUhAtE"
+  },
+  {
+    "name": "Camille Laurent",
+    "gender": "female",
+    "accent": "French",
+    "style": "European affairs reporter. Cool, composed mid register with elegant phrasing and clear English diction.",
+    "keywords": [
+      "europe",
+      "diplomacy",
+      "international",
+      "trade",
+      "europeans"
+    ],
+    "voice_id": "S3Tr8S2EjzRBezKBjH3s"
+  },
+  {
+    "name": "Julien Perrin",
+    "gender": "male",
+    "accent": "French",
+    "style": "Local and infrastructure reporter. Warm textured low register with conversational pacing and lucid place names.",
+    "keywords": [
+      "transport",
+      "trains",
+      "housing",
+      "cities",
+      "local",
+      "infrastructure"
+    ],
+    "voice_id": "p5sszFOFxF1OSUxk3303"
+  }
+]

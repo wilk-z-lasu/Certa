@@ -6,6 +6,7 @@ from pathlib import Path
 
 from build_preai import build_preai, read_category_content
 from generate_script import ScriptError, generate_script
+from generate_news_audio import generate_news_audio
 
 DIRECTORY = Path(__file__).resolve().parent / "user_data"
 
@@ -52,6 +53,8 @@ button:disabled{background:#d6ddd5;color:#49584b;cursor:default}
 <button id="change" type="button">Change categories</button></footer>
 </section>
 <section id="ready" hidden><h1 id="ready-title" tabindex="-1">Your personalized news</h1>
+<p id="audio-status" role="status"></p><audio id="news-player" controls hidden aria-label="Your narrated news briefing"></audio>
+<button type="button" id="retry-audio" hidden>Retry audio</button>
 <article id="script"></article></section></main>
 <script>
 const form=document.querySelector('form'), choices=document.querySelector('#choices'),
@@ -100,6 +103,7 @@ async function saveInterests(){
       loading.hidden=true;
       ready.hidden=false;
       document.querySelector('#ready-title').focus();
+      narrate(body);
       return;
     }
     errorMessage=body;
@@ -109,6 +113,23 @@ async function saveInterests(){
   failureDetail.textContent=errorMessage;
   button.disabled=false;
   document.querySelector('#failure-title').focus();
+}
+async function narrate(script){
+  const status=document.querySelector('#audio-status'), player=document.querySelector('#news-player'),
+        retry=document.querySelector('#retry-audio');
+  retry.hidden=true;
+  status.textContent='Preparing your audio briefing…';
+  try {
+    const response=await fetch('/narrate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({script})});
+    if(!response.ok) throw Error(await response.text());
+    player.src=URL.createObjectURL(await response.blob());
+    player.hidden=false;
+    status.textContent='Narrated by a synthetic journalist voice.';
+  } catch(error) {
+    status.textContent=error.message;
+    retry.hidden=false;
+    retry.onclick=()=>narrate(script);
+  }
 }
 form.onsubmit=event=>{
   event.preventDefault();
@@ -145,6 +166,26 @@ class Picker(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
+        if self.path == "/narrate":
+            if self.headers.get_content_type() != "application/json":
+                return self.send_error(415)
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 1024 * 1024:
+                    return self.send_error(400)
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict) or not isinstance(payload.get("script"), str):
+                    return self.send_error(400)
+                audio = generate_news_audio(DIRECTORY, expected_script=payload["script"]).read_bytes()
+            except (ValueError, OSError, RuntimeError) as error:
+                self.log_error("Could not generate news audio: %s", error)
+                return self.reply(500, "Could not generate the audio. Your script is available below.")
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(audio)))
+            self.end_headers()
+            self.wfile.write(audio)
+            return
         if self.path != "/save":
             return self.send_error(404)
         if self.headers.get_content_type() != "application/json":
