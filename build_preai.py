@@ -2,9 +2,12 @@ import json
 from pathlib import Path
 
 
+def read_category_content(directory):
+    return json.loads((directory.parent / "categories.json").read_text(encoding="utf-8"))
+
+
 def build_preai(directory):
-    root = directory.parent
-    categories = json.loads((root / "categories.json").read_text(encoding="utf-8"))
+    categories = read_category_content(directory)
     selections = directory / "user_liked_categories"
     sections = []
     for name in selections.read_text(encoding="utf-8").splitlines():
