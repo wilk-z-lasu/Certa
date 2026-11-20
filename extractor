@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+import json
+from pathlib import Path
+
+
+def main():
+    directory = Path(__file__).resolve().parent
+    with (directory / "categories.json").open(encoding="utf-8") as source:
+        categories = json.load(source)
+
+    output_dir = directory / "user_data"
+    output_dir.mkdir(exist_ok=True)
+    with (output_dir / "all_categories").open("w", encoding="utf-8") as output:
+        for name in categories:
+            print(name, file=output)
+
+
+if __name__ == "__main__":
+    main()
