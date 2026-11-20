@@ -6,7 +6,7 @@ from pathlib import Path
 
 from build_preai import build_preai, read_category_content
 from generate_script import ScriptError, generate_script
-from generate_news_audio import generate_news_audio
+from md_to_speech import generate_news_audio
 
 DIRECTORY = Path(__file__).resolve().parent / "user_data"
 
