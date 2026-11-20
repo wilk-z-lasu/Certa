@@ -10,16 +10,16 @@ A **story** is one source article. An **event** is a specific occurrence covered
 
 ```mermaid
 flowchart TD
-    A[(Source story database)] --> B[Categorize each story]
+    A[(Source story database)] --> B[Tag topics and geographic relevance]
     B --> C[Small model: group stories into events]
     C --> D[Larger model: check event evidence and create overview]
     D --> E[Validate claims and source references]
-    E --> F[(Event overview database: categories, claims, sources, versions)]
+    E --> F[(Event overview database: topics, regions, claims, sources)]
     P[Listener preferences] --> G[Retrieve and rank events into a personal draft]
     F --> G
     G --> H[Composition model: write the daily overview]
     H --> I[Validate final claims and numbers]
-    I --> J[Serve final daily overview and narrated audio]
+    I --> J[Serve final daily overview and ElevenLabs audio]
     J --> K[Daily listener feedback]
     K --> P
 ```
@@ -28,10 +28,10 @@ The source and event databases are logical stores and may share one database ins
 
 | Stored record | Minimum information and links |
 |---|---|
-| Source story | Original article ID, publisher, permalink, language, publication time, source text, categories, and duplicate/reporting-origin links |
-| Event and membership | Stable event ID, event description and time, categories, linked story IDs, grouping status and revision |
-| Event overview revision | Event ID, overview, claim IDs and evidence states, supporting/contradicting source references, input story versions, model/prompt versions, and processing status |
-| Listener profile | Preferred categories, language, target duration, depth, profile version, and adjustment history |
+| Source story | Original article ID, publisher, permalink, source language, publication time, source text, topic categories, geographic tags, and duplicate/reporting-origin links |
+| Event and membership | Stable event ID, event description and time, topic categories, countries materially involved or affected, linked story IDs, grouping status and revision |
+| Event overview revision | Event ID, overview, geographic scope and supporting story IDs, claim IDs and evidence states, supporting/contradicting source references, input story versions, model/prompt versions, and processing status |
+| Listener profile | Preferred topics, briefing language, optional local news region, target duration, depth, profile version, and adjustment history |
 | Personal draft | Listener and profile version, briefing date/cutoff, ordered event overview revision IDs, selected claim IDs, inclusion reasons, and length/depth budget |
 | Final daily overview | Draft ID, text segments linked to event revisions and claim IDs, validation result, and audio references |
 | Daily feedback | Listener, daily overview ID, answers, and resulting profile adjustment |
@@ -48,7 +48,7 @@ Only validated event overview revisions enter the listener retrieval pool. A pro
 
 ## MVP: source database and foundation
 
-- [ ] **F01 · P0 · Establish the runnable application.** Choose and document the application stack, database, and providers for the small grouping model, larger event-checking model, daily composition model, and speech generation. Configure these roles independently; record selected models and prompts. **Done when:** a teammate can start the application from documented setup steps without committing credentials.
+- [ ] **F01 · P0 · Establish the runnable application.** Choose and document the application stack, database, and providers for the small grouping model, larger event-checking model, and daily composition model. Use ElevenLabs for speech generation. Configure these roles independently; record selected models and prompts, plus the ElevenLabs voice and speech model. **Done when:** a teammate can start the application from documented setup steps without committing credentials.
 
 - [ ] **F02 · P0 · Implement the storage records and stage contracts.** Create the linked records defined above with stable IDs, revision identifiers, and structured model outputs. Preserve `source story → event → overview revision/claim → personal draft → final segment → audio segment`, plus the listener profile version. **Depends on:** F01. **Done when:** example records can be stored and loaded, and invalid references or malformed stage outputs are rejected.
 
@@ -64,9 +64,11 @@ Only validated event overview revisions enter the listener retrieval pool. A pro
 
 - [ ] **C02 · P0 · Categorize each source story.** Map publisher categories into the taxonomy, then use article text and an inexpensive classifier where tags are missing or ambiguous. Persist categories, method, and uncertainty on each story before event grouping. Do not use the supplied POSITIVE/NEGATIVE tags as trust signals. **Depends on:** F03, C01. **Done when:** a reviewed sample across all feeds and languages has recorded errors and corrections, and uncertain classifications remain identifiable.
 
+- [ ] **C06 · P0 · Tag stories for local news.** Keep the original article language and assign geographic tags from the places materially involved in or affected by the reported event. Start with country codes such as `NL` and `DE`, plus `global` for worldwide scope and `unknown` for insufficient evidence. Use publisher location tags as hints and confirm them against the headline and excerpt or a short passage. Reuse the small classifier for ambiguous cases and keep the evidence reference behind each regional match. **Depends on:** C02. **Done when:** articles about the same international event get consistent geographic tags across translations, and English reporting about the Netherlands or Germany can qualify for the corresponding local feed.
+
 - [ ] **C03 · P0 · Merge duplicate and translated coverage.** Detect exact copies and near duplicates, including English, German, and Dutch versions of the same Invezz article. Retain every source link and identify shared reporting origins. **Depends on:** C02. **Done when:** translations and copies count as one reporting origin when assessing corroboration.
 
-- [ ] **C04 · P0 · Assign stories to events with the small model.** Find candidate events using categories, time, entities, and semantic similarity, then ask the small model to match a story to an existing event or create one. Consider candidates across related categories and languages. Save membership, grouping uncertainty, stable event IDs, and categories; a later article about the same occurrence updates its event. **Depends on:** F04, C03. **Done when:** reviewed examples merge coverage across publishers and languages, keep separate occurrences involving the same company distinct, and defer ambiguous assignments for review before event checking.
+- [ ] **C04 · P0 · Assign stories to events with the small model.** Find candidate events using categories, time, entities, and semantic similarity, then ask the small model to match a story to an existing event or create one. Consider candidates across related categories and languages. Save membership, grouping uncertainty, stable event IDs, and categories; a later article about the same occurrence updates its event. **Depends on:** F04, C03, C06. **Done when:** reviewed examples merge coverage across publishers and languages, keep separate occurrences involving the same company distinct, and defer ambiguous assignments for review before event checking.
 
 - [ ] **C05 · P0 · Rank eligible events for editorial importance.** Rank published event overview revisions using recency, event significance, and breadth of impact before applying listener preferences. Prevent duplicate volume or the size of the Zacks feed from dominating the ranking. **Depends on:** T06. **Done when:** each selected event has an inspectable ranking explanation and repeated coverage does not create repeated briefing items.
 
@@ -84,15 +86,15 @@ The larger model receives the event's source stories, reporting-origin links, an
 
 - [ ] **T05 · P0 · Provide an event and claim inspection view.** Show each event's categories, overview revisions, source stories, claim evidence states, explanations, and disagreements, accessible from the final text or audio segment. **Depends on:** T06. **Done when:** a reviewer can trace three selected spoken claims through their event overviews to supporting articles without searching the dataset manually.
 
-- [ ] **T06 · P0 · Publish and reuse event overviews in the database.** Store each validated overview revision under its event ID with categories, all source links, claims, and processing metadata. Publish only after validation; retain failed results separately. New or corrected coverage, changed membership, or model/prompt changes require a new checked revision before serving the changed information. Reuse unchanged results across listeners and runs. **Depends on:** T04. **Done when:** retrieval excludes incomplete/failed results, unchanged events do not trigger repeated large-model calls, and new coverage creates a validated revision while prior briefings retain their original references.
+- [ ] **T06 · P0 · Publish and reuse event overviews in the database.** Store each validated overview revision under its event ID with topic categories, geographic scope, source links, claims, and processing metadata. Publish a country tag only when the event evidence shows material involvement or impact there. Publish only after validation; retain failed results separately. New or corrected coverage, changed membership, or model/prompt changes require a new checked revision before serving the changed information. Reuse unchanged results across listeners and runs. **Depends on:** T04. **Done when:** retrieval can filter validated revisions by region, unchanged events do not trigger repeated large-model calls, and new coverage creates a validated revision while prior briefings retain their original references.
 
 ## MVP: listener preferences and personalization
 
-- [ ] **L01 · P0 · Build structured listener setup.** Collect categories to hear more or less about, preferred language, target duration, and desired depth. Use the same category taxonomy as the event database, provide editable defaults, and avoid requiring unnecessary personal data. **Depends on:** C01, F02. **Done when:** a new listener can save a complete profile through a short form.
+- [ ] **L01 · P0 · Build structured listener setup.** Collect topics to hear more or less about, briefing language, an optional country for local news, target duration, and desired depth. Suggest the Netherlands for Dutch and Germany for German, with a separate control to confirm, change, or skip the suggestion. Use general coverage when the listener skips the region. **Depends on:** C01, F02. **Done when:** a listener can save a profile such as English narration with Netherlands coverage, or Dutch narration with general coverage.
 
 - [ ] **L02 · P0 · Save editable, versioned profiles.** Persist each listener's choices with timestamps and distinguish explicit settings from changes learned through feedback. **Depends on:** L01. **Done when:** reloading retains preferences and each briefing can identify the exact profile version used.
 
-- [ ] **L03 · P0 · Retrieve event overviews into a personal draft.** Query the event database for the latest eligible validated revision per event using only reporting available by the briefing cutoff. Combine editorial importance with category preferences, remove repeated events, and allocate length and depth for the listener. Save an ordered draft containing event revision IDs, selected claims, inclusion reasons, and the profile version. **Depends on:** C05, L02. **Done when:** two contrasting profiles produce different saved drafts from the same event database without rerunning event checking for either listener.
+- [ ] **L03 · P0 · Retrieve event overviews into a personal draft.** Query the event database for the latest eligible validated revision per event using only reporting available by the briefing cutoff. Rank by editorial importance and topic preferences, and prioritize verified geographic matches in a local section when a region is selected. Use eligible evidence in any source language and compose the briefing in the chosen listening language. Present other stories as general coverage, and tell the listener when there are no eligible updates for their region. Save event revision IDs, selected claims, inclusion reasons, and the profile version. **Depends on:** C05, L02. **Done when:** switching regions can change story selection while the listening language stays the same, and both drafts reuse saved event overviews.
 
 - [ ] **L04 · P0 · Handle sparse coverage in the draft.** Set a shorter target when there is insufficient relevant, supported news and explain the coverage limitation. If there are no eligible events, return a clear no-news result without calling the composition or speech model. **Depends on:** L03. **Done when:** unusual preferences and a day without eligible events produce honest results without invented filler or unnecessary model calls.
 
@@ -102,9 +104,16 @@ The larger model receives the event's source stories, reporting-origin links, an
 
 - [ ] **B02 · P0 · Validate and save the final daily overview.** Check the composition model's text against the draft's event revisions and claim evidence, including numbers, translation, attribution, and disagreements. Save the final overview, lineage, and validation result; block delivery and narration on failure. **Depends on:** B01, T03, T04. **Done when:** an invented claim, changed figure, or omitted material caveat prevents publication, while valid text can be served with its source links.
 
-- [ ] **B03 · P0 · Narrate the final daily overview.** Generate audio from the exact validated text with clear pronunciation, pacing, and a spoken synthetic-voice disclosure. Link audio segments to final text, event revisions, and claims. **Depends on:** B02. **Done when:** playable audio matches the validated overview, has a measured duration, and retains provenance; an audio failure leaves the validated text available with an accurate status.
+- [ ] **B03 · P0 · Narrate the final daily overview with ElevenLabs.** Send the exact validated text to ElevenLabs Text to Speech from the backend and save MP3 audio for the introduction, event segments, and closing. Include the spoken synthetic-voice disclosure in the validated introduction. Store voice/model settings and link audio segments to final text, event revisions, and claims. Cache completed segments by text and generation settings so playback and unchanged reruns reuse audio. **Depends on:** B02. **Done when:** playable audio matches the validated overview, has a measured duration, and retains provenance; failed segments can be retried without regenerating successful ones, and an audio failure leaves the validated text available with an accurate status.
 
 - [ ] **B04 · P0 · Serve the final daily overview.** Provide the final text, audio playback, event navigation, evidence and source links, and profile editing. Show the briefing date and synthetic narration disclosure; distinguish processing, ready text, ready audio, and failed states. **Depends on:** B03, T05, L02. **Done when:** a listener can complete setup, read or hear the final daily overview, and inspect a claim in one application flow.
+
+### ElevenLabs integration defaults
+
+- Keep `ELEVENLABS_API_KEY` on the backend in an untracked environment file or managed secret. Configure `ELEVENLABS_VOICE_ID` and `ELEVENLABS_MODEL_ID` at setup; use one configured narrator for the demo and confirm its quality in the supported demo languages.
+- Use the [Text to Speech conversion endpoint](https://elevenlabs.io/docs/api-reference/text-to-speech/convert) with `output_format=mp3_44100_128`. Follow the [official setup guide](https://elevenlabs.io/docs/eleven-api/quickstart) for authentication and SDK setup.
+- Play saved segments in order with their corresponding transcript and source links. Keep successful demo audio available locally for rehearsal and presentation; changing only the audio settings must not rerun event processing or composition.
+- Record narration text characters, request latency, retries, audio duration, and available provider usage data. Calculate speech cost separately using the actual ElevenLabs plan and model, rather than treating narration as LLM text-token usage.
 
 ## MVP: daily feedback and adjustment
 
@@ -122,7 +131,7 @@ The larger model receives the event's source stories, reporting-origin links, an
 
 - [ ] **E02 · P1 · Audit claims through the complete pipeline.** Check at least three claims from actual audio against their source articles, including a numeric claim. Trace each through the final overview, personal draft, event overview revision, and original evidence. Check that composition preserves caveats and historical cutoffs exclude future reporting. **Depends on:** B04. **Done when:** the audit records spoken wording, source support, exact values and context, and any limitations, with all discovered unsupported statements corrected before the demo.
 
-- [ ] **E03 · P1 · Evaluate listener fit and feedback.** Demonstrate two contrasting profiles, accept a new wildcard profile without code changes, and demonstrate a daily check-in changing the following briefing. Exercise missing feedback, sparse coverage, undo, and repeated submissions. **Depends on:** D04. **Done when:** the comparison explains observable editorial differences and the feedback scenarios behave as specified.
+- [ ] **E03 · P1 · Evaluate listener fit and feedback.** Demonstrate two contrasting profiles, accept a new wildcard profile without code changes, and demonstrate a daily check-in changing the following briefing. Compare two profiles with the same listening language and different regions, and check that a translated international event stays outside the local section unless the evidence supports a regional match. Exercise missing feedback, sparse local coverage, undo, and repeated submissions. **Depends on:** D04. **Done when:** the comparison explains observable editorial differences and the feedback scenarios behave as specified.
 
 - [ ] **E04 · P1 · Review the listening experience.** Listen to complete briefings in the supported demo languages, checking pacing, pronunciation, understandable numbers, structure, and requested versus actual duration. **Depends on:** B04. **Done when:** target durations and acceptable tolerances are documented and any remaining listening issues are recorded.
 
@@ -147,6 +156,7 @@ The larger model receives the event's source stories, reporting-origin links, an
 The MVP is ready when all P0 tasks work together and all P1 evaluation and delivery tasks are complete. The six judging criteria remain the priority order: trust and accuracy (25%), listener fit (20%), sense-making (20%), scalability and cost (15%), listening experience (10%), and path to product (10%).
 
 - Classification uses a normalized taxonomy; existing publisher tags are inputs, with text-based fallback.
+- Local news uses evidence of geographic relevance. The Dutch and German feeds largely translate the same Invezz coverage, so the local demo should also draw on English articles with verified regional relevance. Demo regions start at country level because coverage is sparse.
 - Source stories are categorized first; the small model groups them into events. Related categories remain eligible for matching so topic labels do not fragment one event.
 - The larger model checks each event's evidence and creates its reusable overview. Validated overviews, categories, and source links are persisted in the event database before listener retrieval.
 - A personal draft is an ordered selection of event overview revisions and claims. A separate composition model turns it into the final daily overview, which is validated before serving or narration.
@@ -154,4 +164,4 @@ The MVP is ready when all P0 tasks work together and all P1 evaluation and deliv
 - Listener setup is structured. Daily feedback automatically changes the next briefing, with visible, editable, reversible updates.
 - The MVP uses an in-application daily check-in and historical dates to demonstrate adaptation; production scheduling belongs to P03.
 - Official releases, supplied listener profiles, and the answer key are mentioned in the challenge brief but are not currently present in the repository. Track their availability and label substitute evaluation material.
-- Stack and provider selection belongs to F01. Actual prices and supported speech languages must be checked when providers are selected.
+- ElevenLabs is the selected speech provider. Remaining stack/provider selection and ElevenLabs voice/model configuration belong to F01. Confirm account access, speech pricing, and supported demo languages during setup.
