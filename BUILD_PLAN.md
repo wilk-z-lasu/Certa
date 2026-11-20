@@ -2,7 +2,7 @@
 
 Build a personalized daily overview from reusable event overviews, then deliver it as text and audio. Categorize source stories, group coverage of the same event with a small model, and use a larger model to check the evidence and create an event overview before personalizing the result for listeners.
 
-The [categorization CLI](README.md) runs C01, C02, and C06 as a standalone stage with a local JSONL handoff. Their database integration is pending. Requirements come from [the challenge brief](Sourcera-Track-Description.md), [project instructions](AGENTS.md), and [dataset notes](liquid-briefing-data/README.txt).
+The [local pipeline](README.md) offers JSONL stages for categorization (C01, C02, C06) and event grouping (C03, C04). Database integration and live Luna evaluation are pending. Requirements come from [the challenge brief](Sourcera-Track-Description.md), [project instructions](AGENTS.md), and [dataset notes](liquid-briefing-data/README.txt).
 
 ## Pipeline and terminology
 
