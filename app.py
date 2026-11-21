@@ -1,31 +1,27 @@
 """Run with python3 app.py and open the printed local URL."""
 import json
 import re
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import sqlite3
+from html import escape
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
+from urllib.parse import parse_qs, urlsplit
 
-from build_preai import build_preai, read_category_content
-from generate_script import ScriptError, generate_script
+from build_preai import NoCoverage, category_options, database_path, make_draft, preferences
+from generate_script import ScriptError, compose_draft, save_briefing
 from md_to_speech import generate_news_audio
+from voxnews import daily_web
+from voxnews.editions import picker_options
+from voxnews.listeners import current, storage
+from voxnews.topic_rules import TOPIC_LABELS
 
 DIRECTORY = Path(__file__).resolve().parent / "user_data"
+# The CLI and legacy audio route also use the latest script in this directory.
+BRIEFING_FILES = Lock()
 
 
-def categories():
-    lines = (DIRECTORY / "all_categories").read_text(encoding="utf-8").splitlines()
-    return list(dict.fromkeys(line.strip() for line in lines if line.strip()))
-
-
-def category_options():
-    content = read_category_content(DIRECTORY)
-    options = {}
-    for name in categories():
-        body = content.get(name, "")
-        options[name] = isinstance(body, str) and bool(body.strip()) and not re.fullmatch(r"text\d+", body.strip())
-    return options
-
-
-PAGE = """<!doctype html>
+PAGE = r"""<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VoxNews · Your daily briefing</title>
 <style>
@@ -200,9 +196,8 @@ button:disabled{background:#d6ddd5;color:#49584b;cursor:default}
 #script { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 68ch; line-height: 1.7; }
 </style>
 <main><header>VoxNews</header><section id="picker"><h1>What interests you today?</h1>
-<p>Choose at least 5 categories for your briefing.</p>
-<form><div id="choices"></div><footer><button disabled>Save interests</button>
-<output id="count">0 selected · Choose 5 more</output></footer></form><p role="status"></p></section>
+<!--TOPIC_FORM-->
+</section>
 <section id="failed" hidden>
 <h1 id="failure-title" tabindex="-1">Could not prepare your briefing</h1>
 <p id="failure-detail" role="status"></p>
@@ -226,16 +221,29 @@ button:disabled{background:#d6ddd5;color:#49584b;cursor:default}
       <button type="button" id="toggle-transcript" aria-controls="transcript" aria-expanded="false" hidden>Show transcript</button>
       <a id="download-audio" download="VoxNews-briefing.wav" hidden>Download WAV</a>
       <button type="button" id="retry-audio" hidden>Retry audio</button>
+      <button type="button" id="listen" hidden>Generate audio</button>
+      <button type="button" id="edit">Change interests</button>
     </div>
+    <section id="daily-audio" hidden><audio controls></audio><ol></ol></section>
   </div>
   <article class="transcript" id="transcript" aria-labelledby="transcript-title" hidden>
     <h2 id="transcript-title">Transcript</h2>
     <div id="script"></div>
   </article>
+  <details id="check-in" hidden><summary>Daily check-in</summary>
+  <form id="feedback-form">
+    <label>Was this useful? <select name="useful"><option value="">Skip question</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+    <label>Next briefing length <select name="length"><option value="same">Keep length</option><option value="less">Shorter</option><option value="more">Longer</option></select></label>
+    <label>Next briefing depth <select name="depth"><option value="same">Keep depth</option><option value="less">Less detail</option><option value="more">More detail</option></select></label>
+    <label>More about <select name="more"><option value="">Choose topic</option></select></label>
+    <label>Less about <select name="less"><option value="">Choose topic</option></select></label>
+    <button>Save feedback</button><button type="button" id="skip-feedback">Skip today</button>
+    <button type="button" id="undo-feedback">Undo adjustment</button><p role="status"></p>
+  </form></details>
 </section></main>
 <script>
 const form=document.querySelector('form'), choices=document.querySelector('#choices'),
-button=form.querySelector('button'), statusLine=document.querySelector('#picker [role=status]');
+button=form.querySelector('button');
 const picker=document.querySelector('#picker'), failed=document.querySelector('#failed'),
 failureDetail=document.querySelector('#failure-detail');
 const briefing=document.querySelector('#briefing'), briefingTitle=document.querySelector('#briefing-title'),
@@ -263,29 +271,81 @@ function setStage(phase, message) {
 }
 
 const selected=()=>Array.from(choices.querySelectorAll(':checked'),box=>box.value);
-form.onchange=()=>{
+const region=document.querySelector('#region'), language=document.querySelector('#language');
+let currentBriefing=null;
+function updateCount(){
   const n=selected().length;
-  document.querySelector('#count').textContent=n+' selected'+(n<5 ? ' · Choose '+(5-n)+' more' : '');
-  button.disabled=n<5;
-  statusLine.textContent='';
-};
-async function load(){
-  try {
-    const response=await fetch('/categories');
-    if(!response.ok) throw Error();
-    const options=Object.entries(await response.json());
-    for(const [name, available] of options){
-      const label=document.createElement('label'), box=document.createElement('input');
-      box.type='checkbox'; box.value=name;
-      box.disabled=!available;
-      label.append(box,document.createTextNode(available ? name : name+' (no articles)'));
-      choices.append(label);
-    }
-    if(options.filter(([, available])=>available).length<5) {
-      statusLine.textContent='Fewer than five categories have articles. Add reporting to categories.json and refresh.';
-    }
-  } catch {statusLine.textContent='Could not load categories. Refresh to try again.'}
+  document.querySelector('#count').textContent=n+' selected';
+  button.disabled=n===0;
 }
+choices.onchange=updateCount;
+const daily=form.dataset.daily==='true';
+const day=document.querySelector('#day');
+region.onchange=language.onchange=()=>form.submit();
+if(day) day.onchange=()=>form.submit();
+async function post(path, payload){
+  const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  if(!response.ok) throw Error(await response.text());
+  return response.json();
+}
+function settings(){
+  const weights={};
+  for(const field of form.querySelectorAll('[data-weight]')) weights[field.dataset.weight]=Number(field.value);
+  return {topics:selected(), region:region.value||null, language:language.value, minutes:Number(form.minutes.value),
+          depth:form.depth.value, weights, version:Number(form.dataset.version)};
+}
+async function saveProfile(){
+  const profile=await post('/api/profile',settings());
+  form.dataset.version=profile.version;
+  return profile;
+}
+if(daily){
+  document.querySelector('#save-profile').onclick=async()=>{
+    try{await saveProfile(); statusMessage('Preferences saved.');}catch(e){statusMessage(e.message);}
+  };
+  const feedback=document.querySelector('#feedback-form');
+  for(const topic of choices.querySelectorAll('input')){
+    for(const field of [feedback.more,feedback.less]) field.add(new Option(topic.parentNode.textContent.split(' (')[0],topic.value));
+  }
+  async function submitFeedback(answers,undo=false){
+    try{
+      const profile=await post('/api/feedback'+(undo?'/undo':''),{edition:currentBriefing.edition,answers});
+      feedback.querySelector('[role=status]').textContent=undo?'Adjustment undone.':(answers.skip?'Check-in skipped.':profile.reason);
+      form.dataset.version=profile.version;
+      form.minutes.value=profile.minutes; form.depth.value=profile.depth;
+      for(const box of choices.querySelectorAll('input')) box.checked=profile.topics.includes(box.value);
+      for(const w of form.querySelectorAll('[data-weight]')) w.value=profile.weights[w.dataset.weight]||0;
+      updateCount();
+    }catch(e){feedback.querySelector('[role=status]').textContent=e.message;}
+  }
+  feedback.onsubmit=e=>{e.preventDefault();submitFeedback({useful:feedback.useful.value||null,length:feedback.elements.namedItem('length').value,
+    depth:feedback.depth.value,more:feedback.more.value?[feedback.more.value]:[],less:feedback.less.value?[feedback.less.value]:[]});};
+  document.querySelector('#skip-feedback').onclick=()=>submitFeedback({skip:true});
+  document.querySelector('#undo-feedback').onclick=()=>submitFeedback(null,true);
+}
+function statusMessage(text){document.querySelector('#picker [role=status]').textContent=text;}
+function renderTranscript(result){
+  scriptText.replaceChildren();
+  if(!result.spoken_segments) scriptText.append(document.createTextNode(result.script.split('\n\n')[0]));
+  for(const segment of result.spoken_segments||result.segments){
+    const p=document.createElement('p');
+    p.append(document.createTextNode(segment.text+' '));
+    const seen=new Set();
+    for(const source of segment.sources||[]){
+      if(seen.has(source.url)) continue;
+      seen.add(source.url);
+      const link=document.createElement('a');
+      link.href=source.url; link.textContent=source.label;
+      p.append(link, document.createTextNode(' '));
+    }
+    if(segment.kind==='claim'){
+      const a=document.createElement('a'); a.textContent='Claim evidence';
+      a.href='/evidence/'+encodeURIComponent(segment.event_id)+'/'+segment.revision+'#c'+segment.claim_id;
+      p.append(a);
+    }
+    scriptText.append(p);
+  }
+};
 async function saveInterests(){
   if (button.disabled) return;
   button.disabled=true;
@@ -297,16 +357,28 @@ async function saveInterests(){
   briefingTitle.focus();
   let errorMessage;
   try {
-    const response=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selected())});
-    const body=await response.text();
+    if(daily){
+      const profile=await saveProfile();
+      currentBriefing=await post('/api/briefing',{date:day.value,version:profile.version});
+      renderTranscript(currentBriefing);
+      briefingTitle.textContent='Your daily briefing · '+currentBriefing.date;
+      transcript.hidden=false; transcriptToggle.hidden=false;
+      transcriptToggle.setAttribute('aria-expanded','true'); transcriptToggle.textContent='Hide transcript';
+      document.querySelector('#check-in').hidden=false;
+      document.querySelector('#listen').hidden=false;
+      setStage('ready','Transcript ready'); return;
+    }
+    const response=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({topics:selected(), region:region.value || null, language:language.value})});
     if (response.ok) {
-      scriptText.textContent=body;
+      currentBriefing=await response.json();
+      renderTranscript(currentBriefing);
       transcriptToggle.hidden=false;
-      narrate(body);
+      narrate(currentBriefing);
       return;
     }
-    errorMessage=body;
-  } catch {errorMessage='Could not prepare your briefing. Please try again.'}
+    errorMessage=await response.text();
+  } catch(e) {errorMessage=e.message||'Could not prepare your briefing. Please try again.'}
   setStage('script-error', '');
   briefing.hidden=true;
   failed.hidden=false;
@@ -314,20 +386,37 @@ async function saveInterests(){
   button.disabled=false;
   document.querySelector('#failure-title').focus();
 }
-async function narrate(script) {
+async function narrate(result) {
   retryAudio.hidden = true;
   setStage('narrating', 'Transcript ready. Generating audio…');
   try {
+    if(daily){
+      const manifest=await post('/api/narration',{edition:result.edition});
+      if(currentBriefing!==result) return;
+      const section=document.querySelector('#daily-audio'), media=section.querySelector('audio'), list=section.querySelector('ol');
+      list.replaceChildren(); section.hidden=false;
+      let index=0;
+      const play=i=>{index=i; media.src=manifest.segments[i].url; media.play().catch(()=>{});};
+      manifest.segments.forEach((part,i)=>{
+        const li=document.createElement('li'), choice=document.createElement('button');
+        choice.type='button'; choice.textContent=part.text; choice.onclick=()=>play(i); li.append(choice); list.append(li);
+      });
+      media.src=manifest.segments[0].url;
+      media.onended=()=>{if(index+1<manifest.segments.length) play(index+1);};
+      setStage('ready','AI-generated narration · '+formatTime(manifest.duration)); return;
+    }
     const response = await fetch('/narrate', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({script})
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({edition:result.edition, script:result.script})
     });
+    if(currentBriefing!==result) return;
     if (!response.ok) {
       audioFailed('Could not generate the audio.');
       return;
     }
-    player.src = URL.createObjectURL(await response.blob());
+    const audio=await response.blob();
+    if(currentBriefing===result) player.src = URL.createObjectURL(audio);
   } catch {
-    audioFailed('Could not load the audio.');
+    if(currentBriefing===result) audioFailed('Could not load the audio.');
   }
 }
 
@@ -406,8 +495,9 @@ transcriptToggle.onclick = () => {
 };
 retryAudio.onclick = () => {
   transcriptToggle.focus();
-  narrate(scriptText.textContent);
+  narrate(currentBriefing);
 };
+document.querySelector('#listen').onclick=()=>{document.querySelector('#listen').hidden=true;narrate(currentBriefing);};
 
 form.onsubmit=event=>{
   event.preventDefault();
@@ -419,8 +509,76 @@ document.querySelector('#change').onclick=()=>{
   picker.hidden=false;
   button.focus();
 };
-load();
+document.querySelector('#edit').onclick=()=>{
+  currentBriefing=null;
+  const dailyAudio=document.querySelector('#daily-audio');
+  dailyAudio.querySelector('audio').pause(); dailyAudio.hidden=true;
+  document.querySelector('#check-in').hidden=true; document.querySelector('#feedback-form').reset();
+  document.querySelector('#feedback-form [role=status]').textContent='';
+  player.pause();
+  const url=player.getAttribute('src');
+  if(url){player.removeAttribute('src'); player.load(); URL.revokeObjectURL(url);}
+  controls.hidden=download.hidden=transcript.hidden=transcriptToggle.hidden=retryAudio.hidden=true;
+  transcriptToggle.setAttribute('aria-expanded','false');
+  transcriptToggle.textContent='Show transcript';
+  briefing.hidden=true; picker.hidden=false; updateCount(); region.focus();
+};
+updateCount();
 </script></html>"""
+
+
+LANGUAGE_NAMES = {"en": "English", "nl": "Nederlands", "de": "Deutsch"}
+REGION_NAMES = {
+    "AU": "Australia", "CA": "Canada", "CH": "Switzerland", "CN": "China", "DE": "Germany",
+    "EA": "Euro area", "FR": "France", "GB": "United Kingdom", "IL": "Israel", "IN": "India",
+    "IR": "Iran", "JP": "Japan", "KR": "South Korea", "MX": "Mexico", "NL": "Netherlands",
+    "NZ": "New Zealand", "RU": "Russia", "TW": "Taiwan", "UA": "Ukraine", "US": "United States",
+}
+
+
+def picker_page(options, region, language, selected, profile=None):
+    def option(value, label, current):
+        return f'<option value="{escape(value)}"{" selected" if value == current else ""}>{escape(label)}</option>'
+
+    languages = "".join(option(code, label, language) for code, label in LANGUAGE_NAMES.items())
+    regions = option("", "All regions", region or "") + "".join(
+        option(code, REGION_NAMES.get(code, code), region) for code in options["regions"])
+    daily = "dates" in options
+    profile = profile or {}
+    choices = []
+    count = 0
+    for topic in options["topics"]:
+        enabled = daily or topic["events"] > 0
+        checked = enabled and topic["id"] in selected
+        count += int(checked)
+        state = " disabled" if not enabled else " checked" if checked else ""
+        local = f', {topic["local"]} local' if daily and region else ""
+        choices.append(f'<label><input type="checkbox" name="topic" value="{escape(topic["id"])}"{state}>'
+                       f'{escape(topic["label"])} ({topic["events"]}{local})</label>')
+    message = "" if any(t["events"] for t in options["topics"]) else (
+        "No approved reporting for this area and language. Try another selection.")
+    extra = save = details = ""
+    if daily:
+        dates = "".join(option(d,d,options["date"]) for d in options["dates"])
+        depths = "".join(option(d,d.title(),profile.get("depth","standard")) for d in ("headlines","standard","detailed"))
+        extra = f'<label>Briefing date <select name="date" id="day">{dates}</select></label>'
+        weights = "".join(f'<label>{escape(label)} <input data-weight="{t}" name="weight_{t}" type="number" min="-2" max="2" value="{profile.get("weights",{}).get(t,0)}"></label>'
+                          for t,label in TOPIC_LABELS.items())
+        details = (f'<label>Minutes <input name="minutes" type="number" min="1" max="10" value="{profile.get("minutes",3)}"></label>'
+                   f'<label>Detail <select name="depth">{depths}</select></label>'
+                   f'<details><summary>Topic priority (−2 to +2)</summary>{weights}</details>')
+        if language in {"de","nl"} and not region:
+            details += '<p>Suggested local coverage: ' + ("Germany" if language=="de" else "Netherlands") + '. Choose it under Coverage area or keep All regions.</p>'
+        save = '<button type="button" id="save-profile">Save preferences</button>'
+    form = f"""<form method="get" data-daily="{str(daily).lower()}" data-version="{profile.get("version",0)}">
+{extra}
+<label>Briefing language <select id="language" name="language">{languages}</select></label>
+<label>Coverage area <select id="region" name="region">{regions}</select></label>
+<fieldset><legend>Choose one or more topics</legend><div id="choices">{"".join(choices)}</div></fieldset>
+{details}
+<footer><button type="submit"{"" if count else " disabled"}>Get briefing</button>{save}
+<output id="count">{count} selected</output></footer></form><p role="status">{message}</p>"""
+    return PAGE.replace("<!--TOPIC_FORM-->", form)
 
 
 class Picker(BaseHTTPRequestHandler):
@@ -428,22 +586,53 @@ class Picker(BaseHTTPRequestHandler):
         data = body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", kind + "; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        if getattr(self, "listener_cookie", None):
+            self.send_header("Set-Cookie", self.listener_cookie)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
 
     def do_GET(self):
-        if self.path == "/":
-            self.reply(200, PAGE, "text/html")
-        elif self.path == "/categories":
-            try:
-                self.reply(200, json.dumps(category_options()), "application/json")
-            except (OSError, ValueError):
-                self.reply(500, "Could not load categories and articles.")
-        else:
-            self.send_error(404)
+        url = urlsplit(self.path)
+        if url.path.startswith(("/api/","/evidence/")):
+            return daily_web.respond(self,DIRECTORY)
+        if url.path not in {"/", "/picker", "/categories"}:
+            return self.send_error(404)
+        params = parse_qs(url.query, keep_blank_values=True)
+        region = params.get("region", [None])[0] or None
+        language = params.get("language", ["en"])[0]
+        try:
+            if url.path == "/":
+                listener = daily_web.identity(self)
+                with storage(DIRECTORY) as db:
+                    profile = current(db,listener) or {}
+                if "language" not in params:
+                    language = profile.get("language","en")
+                if "region" not in params:
+                    region = profile.get("region")
+                preferences(list(TOPIC_LABELS),region,language)
+                day = params.get("date",[None])[0]
+                options = picker_options(database_path(),day,region,language)
+                pending = dict(profile)
+                if "minutes" in params:
+                    pending["minutes"] = max(1,min(10,int(params["minutes"][0])))
+                    pending["depth"] = params.get("depth",["standard"])[0]
+                    pending["weights"] = {t:max(-2,min(2,int(params.get("weight_"+t,["0"])[0]))) for t in TOPIC_LABELS}
+                topics = params.get("topic",[] if "language" in params else profile.get("topics",[]))
+                return self.reply(200,picker_page(options,region,language,topics,pending),"text/html")
+            options = category_options(database_path(), region, language)
+        except ValueError as error:
+            return self.reply(400, str(error))
+        except (sqlite3.Error, OSError) as error:
+            return self.catalogue_unavailable(error)
+        if url.path == "/categories":
+            return self.reply(200, json.dumps(options), "application/json")
+        self.reply(200, picker_page(options, region, language, params.get("topic", [])), "text/html")
 
     def do_POST(self):
+        if self.path.startswith("/api/"):
+            return daily_web.respond(self,DIRECTORY,post=True)
         if self.path == "/narrate":
             if self.headers.get_content_type() != "application/json":
                 return self.send_error(415)
@@ -454,7 +643,18 @@ class Picker(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length))
                 if not isinstance(payload, dict) or not isinstance(payload.get("script"), str):
                     return self.send_error(400)
-                audio = generate_news_audio(DIRECTORY, expected_script=payload["script"]).read_bytes()
+                directory = DIRECTORY
+                if "edition" in payload:
+                    edition = payload["edition"]
+                    if not isinstance(edition, str) or not re.fullmatch(r"[0-9a-f]{64}", edition):
+                        return self.send_error(400)
+                    directory = DIRECTORY / "briefings" / edition
+                    if not (directory / "script.md").is_file():
+                        directory = DIRECTORY / "listeners" / daily_web.identity(self) / edition
+                    if not (directory / "script.md").is_file():
+                        return self.reply(404, "Unknown briefing edition.")
+                with BRIEFING_FILES:
+                    audio = generate_news_audio(directory, expected_script=payload["script"]).read_bytes()
             except (ValueError, OSError, RuntimeError) as error:
                 self.log_error("Could not generate news audio: %s", error)
                 return self.reply(500, "Could not generate the audio. You can still read the transcript.")
@@ -472,37 +672,47 @@ class Picker(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= 65536:
                 return self.send_error(400)
-            picks = json.loads(self.rfile.read(length))
-            if not isinstance(picks, list) or not all(isinstance(p, str) for p in picks):
-                return self.send_error(400)
-            allowed = category_options()
-            chosen = set(picks)
-            if len(chosen) < 5 or any(not allowed.get(name) for name in chosen):
-                return self.reply(400, "Choose at least five different categories that have articles.")
-            target = DIRECTORY / "user_liked_categories"
-            temp = target.with_suffix(".tmp")
-            temp.write_text("".join(p + "\n" for p in allowed if p in chosen), encoding="utf-8")
-            temp.replace(target)
-        except (ValueError, UnicodeError):
-            return self.send_error(400)
-        except OSError:
-            return self.reply(500, "Could not save your interests.")
+            payload = json.loads(self.rfile.read(length))
+            if isinstance(payload, list):
+                selection = preferences(payload)
+            elif isinstance(payload, dict):
+                selection = preferences(payload.get("topics"), payload.get("region"), payload.get("language", "en"))
+            else:
+                return self.reply(400, "Expected a topic selection.")
+        except ValueError as error:
+            return self.reply(400, str(error))
         try:
-            build_preai(DIRECTORY)
-        except (OSError, ValueError) as error:
-            self.log_error("Could not generate preAI.md: %s", error)
-            return self.reply(500, "Your choices were saved, but briefing preparation failed. Please retry.")
+            draft = make_draft(database_path(), selection)
+        except NoCoverage as error:
+            return self.reply(422, str(error))
+        except (sqlite3.Error, OSError, ValueError) as error:
+            return self.catalogue_unavailable(error)
         try:
-            script = generate_script(DIRECTORY)
+            profile = (DIRECTORY / "UserInfo.md").read_text(encoding="utf-8")
+            briefing = compose_draft(draft, profile)
+            with BRIEFING_FILES:
+                edition = save_briefing(DIRECTORY, draft, briefing)
         except ScriptError as error:
             return self.reply(422, str(error))
         except (OSError, UnicodeError) as error:
             self.log_error("Could not generate script.md: %s", error)
             return self.reply(500, "Could not write your briefing script. Please retry.")
-        self.reply(200, script)
+        if isinstance(payload, list):
+            return self.reply(200, briefing["script"])
+        self.reply(200, json.dumps({**briefing, "edition": edition}), "application/json")
+
+    def catalogue_unavailable(self, error):
+        self.log_error("Cannot read event catalogue: %s", error)
+        self.reply(503, "The event catalogue is unavailable. Prepare it with the listener setup steps in README.md.")
 
 
 if __name__ == "__main__":
-    with HTTPServer(("127.0.0.1", 0), Picker) as server:
+    import argparse
+    from md_to_speech import ENV_FILE, load_dotenv
+    load_dotenv(ENV_FILE)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--port",type=int,default=0,help="Local listening port; default chooses an available port")
+    args=parser.parse_args()
+    with ThreadingHTTPServer(("127.0.0.1", args.port), Picker) as server:
         print(f"Open http://127.0.0.1:{server.server_port} in your browser.", flush=True)
         server.serve_forever()

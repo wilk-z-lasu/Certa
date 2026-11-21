@@ -213,6 +213,10 @@ def enrich(db, event_id, model):
                              (revision, len(event["disagreements"]), event_id, current["revision"]))
         if updated.rowcount != 1:
             raise ValueError("event changed during synthesis; rerun against its new revision")
+        if db.execute("SELECT 1 FROM sqlite_master WHERE name='daily_event'").fetchone():
+            info = json.loads(db.execute("SELECT metadata FROM build_info WHERE id=1").fetchone()[0])
+            db.execute("UPDATE daily_event SET revision=? WHERE cutoff=? AND event_id=? AND revision=?",
+                       (revision,info["report"]["cutoff_exclusive"],event_id,current["revision"]))
         db.execute("INSERT OR REPLACE INTO preferred_overview VALUES (?,?)", (base,revision))
     return {"event_id": event_id, "revision": revision, "cached": bool(exists),
             "accepted_notes": event["synthesis"]["accepted_notes"], "rejected_notes": dict(rejected), **usage}

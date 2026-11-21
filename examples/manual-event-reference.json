@@ -1,0 +1,60 @@
+{
+  "basis": "Previously reviewed pairs in EVENT_GROUPING_EVALUATION.md. Official answer key unavailable.",
+  "pairs": [
+    {
+      "left": "ACTI-10010414-01M7AP8WCVYF7JHMQF5AF5PSKQ",
+      "right": "INVZ-10009737-01M7AMS30JH9CG20KPB7WFHP1P",
+      "same_event": true
+    },
+    {
+      "left": "IBTU-10010345-01M7JNQ6RA505ZSJND1Q5P6DB9",
+      "right": "INVZ-10009737-01M7HXNFGVTSR4PFBV3VDMT1PA",
+      "same_event": true
+    },
+    {
+      "left": "IBTU-10010345-01M7APSYR64VGDWV8MTKSEHNS6",
+      "right": "INVZ-10009737-01M7ABAZ1GBYZ82WM2TMV23PZJ",
+      "same_event": true
+    },
+    {
+      "left": "IBTU-10010345-01M7P70PMKV6DPT9R3X2CYF73Y",
+      "right": "IBTU-10010345-01M7Q3B2KTMPH73FBNEN4VMAVA",
+      "same_event": true
+    },
+    {
+      "left": "INVZ-10009737-01M7MXSMA95SGERFQNHR41AED6",
+      "right": "IBTU-10010345-01M7P70PMKV6DPT9R3X2CYF73Y",
+      "same_event": true
+    },
+    {
+      "left": "INVZ-10009737-01M7MXSMA95SGERFQNHR41AED6",
+      "right": "IBTU-10010345-01M7Q3B2KTMPH73FBNEN4VMAVA",
+      "same_event": true
+    },
+    {
+      "left": "INVZ-10009737-01M7HXNFGVTSR4PFBV3VDMT1PA",
+      "right": "INVZ-10009737-01M7N0N67J80W3E4CXG7AK97F2",
+      "same_event": false
+    },
+    {
+      "left": "ACTI-10010414-01M7JN67HHZJF31QKKRPAPJWKT",
+      "right": "ACTI-10010414-01M7Q2T2W2V6E7RCQX47FZAXXQ",
+      "same_event": false
+    },
+    {
+      "left": "ZACK-105463-01M28K5Q9Z0RWJ5PQ29KBYGR7M",
+      "right": "ZACK-105463-01M4XGVPGSA5ECHP7AVJ6TDPW1",
+      "same_event": false
+    },
+    {
+      "left": "INVZ-10009737-01M7B730C0GX01MNNZ7QEWY8FX",
+      "right": "IBTU-10010345-01M7APSYSBC41V7Z537WZJ5VDG",
+      "same_event": false
+    },
+    {
+      "left": "INVZ-10009737-01M7A9M1FMG71WFW2NS510Z71N",
+      "right": "INVZ-10009737-01M7K2JFXBJR4T6AGHTQJ6FNM2",
+      "same_event": false
+    }
+  ]
+}

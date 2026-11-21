@@ -1,5 +1,11 @@
 # Categorization evaluation
 
+## Backend integration, November 21
+
+Daily preparation now persists source classifications alongside immutable article versions before event grouping. Ambiguous labels may receive a bounded review from the configured small model. Candidate labels must first have a source-text match, and accepted decisions retain passage offsets and model/prompt identifiers. Invalid decisions remain flagged. The current full-dataset model run uses this route. The tables below describe the earlier rules-only baseline and its manual sample.
+
+Listening language and geographic relevance remain separate. Published event regions require an approved claim whose wording and supporting source passage establish the country. A publisher name or a translated article's language cannot establish a local match. The listener draft prioritizes eligible local claims and reports sparse local coverage explicitly.
+
 ## Full dataset
 
 The CLI processed 1,740 unique source IDs in 1.41 seconds on the development machine with Python 3.13.2. The two full runs produced identical JSONL bytes. At 10× article volume, with the same feed mix and throughput, the estimate is 14.1 seconds. Both runs used $0 in model API calls. Runtime includes parsing, classification, and writing the handoff.

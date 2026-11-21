@@ -4,15 +4,16 @@ import re
 import unicodedata
 
 
-TOPICS = (
-    "economy_central_banks",
-    "companies_stocks",
-    "currencies",
-    "crypto",
-    "technology_ai",
-    "politics_world",
-    "other_news",
-)
+TOPIC_LABELS = {
+    "economy_central_banks": "Economy & central banks",
+    "companies_stocks": "Companies & stocks",
+    "currencies": "Currencies",
+    "crypto": "Crypto",
+    "technology_ai": "Technology & AI",
+    "politics_world": "Politics & world",
+    "other_news": "Other news",
+}
+TOPICS = tuple(TOPIC_LABELS)
 
 ECONOMY, COMPANIES, CURRENCIES, CRYPTO, TECHNOLOGY, POLITICS, OTHER = TOPICS
 

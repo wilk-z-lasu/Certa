@@ -1,7 +1,6 @@
 """Select an editorial packet or display a claim's complete public source log."""
 
 from collections import defaultdict
-from contextlib import closing
 from html import escape
 import json
 from pathlib import Path
@@ -63,11 +62,22 @@ class Passages:
     def text(self, ref, sources):
         aid = ref["source_id"]
         if aid not in self.rows:
-            path, offset, size = self.db.execute("SELECT feed_file,offset,size FROM article_location WHERE article_id=?",
-                                                (aid,)).fetchone()
+            root = self.root
+            old = None
+            if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='source_location_version'").fetchone():
+                old = self.db.execute("SELECT directory,feed_file,offset,size FROM source_location_version "
+                                      "WHERE article_id=? AND fields=? AND url=?",
+                                      (aid, digest(sources[aid]["field_hashes"]), sources[aid]["url"])).fetchone()
+            if old:
+                directory, path, offset, size = old
+                main = next(p for _, name, p in self.db.execute("PRAGMA database_list") if name == "main")
+                root = Path(main).parent / directory
+            else:
+                path, offset, size = self.db.execute("SELECT feed_file,offset,size FROM article_location WHERE article_id=?",
+                                                    (aid,)).fetchone()
             if Path(path).name != path:
                 raise ValueError("invalid local feed filename")
-            with (self.root / path).open("rb") as f:
+            with (root / path).open("rb") as f:
                 f.seek(offset)
                 row = json.loads(f.read(size))
             if row["$id"] != aid or row["permalink"] != sources[aid]["url"] or any(
@@ -225,8 +235,11 @@ def log_html(event):
             if sid not in used:
                 src = event["sources"][sid]
                 refs += f'<li><a href="{escape(safe_url(src["url"]), quote=True)}">{escape(src["publisher"])}</a> · examined</li>'
+        state = i.get("evidence_state",i.get("article_state"))
+        basis = i.get("reasons",[]) or (["direct article evidence"] if state == "supported" else [])
+        status = [s for s in (state,i.get("official_state"),*basis,i["draft_use"]) if s]
         return (f'<details id="c{i["id"]}"><summary>{escape(label(i))}</summary>'
-                f'<p>{escape(i["draft_use"])}</p><ul>{refs}</ul><small>Claim {escape(i["id"])}</small></details>')
+                f'<p>{escape(" · ".join(status))}</p><ul>{refs}</ul><small>Claim {escape(i["id"])}</small></details>')
     conflicts = []
     for issue in event["disagreements"]:
         links = " · ".join(f'<a href="#c{escape(cid)}">Position {n}</a>' for n, cid in enumerate(issue["claim_ids"], 1))
@@ -238,5 +251,6 @@ def log_html(event):
             'details{padding:.7rem 0;border-top:1px solid #cbd5d1}summary{cursor:pointer}small{overflow-wrap:anywhere}'
             '</style><main><small>VoxNews · Event source log</small>'
             f'<h1>{title}</h1><p>{escape(" · ".join(event["topics"]))}</p>'
+            f'<p>Revision <small>{escape(event["revision"])}</small></p>'
             + ('<h2>Disagreements and revisions</h2><ul>'+"".join(conflicts)+'</ul>' if conflicts else '')
             + '<h2>Claim evidence</h2>'+ "".join(detail(i) for i in event["items"]) + '</main></html>')

@@ -1,5 +1,13 @@
 # Event grouping evaluation
 
+## Local-model final memberships, November 20
+
+The completed full-feed run also preserves every article ID exactly once. It produces 1,464 events, consisting of 1,087 singletons, 302 cases held for grouping review and 75 grouped events. All six positive and five negative manual reference pairs still match their labels in this full output. The final replay reuses 775 cached decisions. The score is saved under `output/full-model-run/grouping-score.json`. These development references provide no full-corpus or holdout accuracy estimate.
+
+The backend integration sample contains 22 source articles from all six feeds and 20 reporting origins. E5 candidate selection and the installed `qwen3.5:0.8b-mlx` grouping model produced 15 events. Final memberships matched all six labeled positive pairs and all five labeled negative pairs in `examples/manual-event-reference.json`. The positive pairs include the Outlook outage, US producer prices, Intel lawsuit and Deutsche Bank leak. The negative examples include distinct occurrences involving the same company and releases from different countries or months.
+
+These are targeted manual references used during development. The official answer key and a separate holdout evaluation remain unavailable. The evaluation can be rerun with `python3 -m voxnews.evaluate grouping output/editorial-evaluation/run/days/2026-11-19/events.jsonl`. The older candidate and hosted-cost estimates below describe earlier runs.
+
 ## Full-corpus candidate run
 
 | Measure | Result |

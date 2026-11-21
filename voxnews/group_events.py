@@ -17,6 +17,7 @@ from .event_candidates import Article, CandidateIndex, reporting_origins
 from .event_embeddings import E5Encoder
 from .event_groups import event_records, form_groups
 from .luna import BATCH_SIZE, MODEL, LunaJudge, ModelError, usage_cost
+from . import providers
 from .topic_rules import TOPICS
 
 
@@ -180,12 +181,16 @@ def run(
     index = CandidateIndex(articles, vectors)
     origins, origin_reviews = reporting_origins(articles, index)
     comparisons = index.shortlist(list(origins))
+    feature_candidates = len(comparisons)
+    if not candidates_only and providers.local():
+        comparisons = {k:p for k,p in comparisons.items() if p.local_candidate(articles)}
     shortlisted = perf_counter()
     summary = {
         "articles": len(articles), "reporting_origins": len(origins),
         "duplicate_or_translation_articles": len(articles) - len(origins),
         "unconfirmed_translations": len(origin_reviews),
         "candidate_pairs": len(comparisons),
+        "feature_candidates": feature_candidates,
         "uncached_initial_batches": (len(comparisons) + BATCH_SIZE - 1) // BATCH_SIZE,
         "embedding_and_load_seconds": round(embedded - started, 3),
         "shortlist_seconds": round(shortlisted - embedded, 3),
@@ -204,18 +209,19 @@ def run(
             decisions.update(judge.judge(list(anchors_to_check.values()), articles))
             comparisons.update(anchors_to_check)
             groups, reviews, anchors_to_check = form_groups(index, origins, comparisons, decisions)
-        records = list(event_records(groups, origins, reviews, origin_reviews, articles, decisions, previous_rows))
+        grouping_model = getattr(judge,"model",MODEL)
+        records = list(event_records(groups, origins, reviews, origin_reviews, articles, decisions, previous_rows, grouping_model, getattr(judge,"prompt_version",None)))
         write_jsonl(output, records)
         summary.update({
             "events": len(records),
             "event_status": dict(Counter(record["status"] for record in records)),
             "decisions": dict(Counter(decision.label for decision in decisions.values())),
-            "anchor_comparisons": anchor_pairs, "model": MODEL,
+            "anchor_comparisons": anchor_pairs, "model": grouping_model, "model_revision": getattr(judge,"revision",grouping_model),
             **{key: judge.stats[key] for key in (
-                "luna_calls", "retries", "cache_hits", "input_tokens", "cached_input_tokens", "output_tokens",
+                "luna_calls", "invalid_local_decisions", "retries", "cache_hits", "input_tokens", "cached_input_tokens", "output_tokens",
             )},
-            "estimated_usage_cost_usd": round(usage_cost(judge.stats), 6),
-            "estimated_10x_usage_cost_usd": round(10 * usage_cost(judge.stats), 6),
+            "estimated_usage_cost_usd": (round(usage_cost(judge.stats), 6) if grouping_model == MODEL else (0 if providers.local() else None)),
+            "estimated_10x_usage_cost_usd": (round(10 * usage_cost(judge.stats), 6) if grouping_model == MODEL else (0 if providers.local() else None)),
         })
 
     seconds = perf_counter() - started

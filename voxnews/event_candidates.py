@@ -9,6 +9,7 @@ from datetime import date, datetime
 from hashlib import sha256
 from heapq import heappush, heappushpop
 import re
+from zlib import crc32
 import unicodedata
 
 from .topic_rules import phrase
@@ -33,6 +34,21 @@ KINDS = {
     "market_move": r"(?:shares?|stocks?|yen|dollar|bitcoin) (?:fell|rise\w*|rose|falls?|gain\w*|slid\w*|rall\w*)|aktien\w* (?:steigen|fallen)|aandelen\w* (?:stijgen|dalen)",
 }
 KIND_PATTERNS = {kind: phrase(pattern) for kind, pattern in KINDS.items()}
+
+# These are the subjects of economic releases. A market story mentioning EUR/GBP can
+# concern both currencies while describing a single country's inflation release.
+RELEASE_SUBJECTS = {
+    "EA":r"euro[ -]?(?:area|zone)|euroraum|eurogebied",
+    "GB":r"u\.?k\.?|britain|british|united kingdom|britische|britse",
+    "CA":r"canada|canadian|kanadische|canadese",
+    "US":r"u\.?s\.?|united states|american|amerikaanse",
+    "DE":r"germany|german|deutschland|deutsche|duitse",
+    "NL":r"netherlands|dutch|nederlandse|niederländische",
+}
+RELEASE_PATTERNS = {region:re.compile(
+    rf"\b(?:{names})(?:['’]s)?\s+(?:(?:headline|core|wholesale|annual|monthly)\s+)?"
+    r"(?:inflation|inflatie|cpi[h]?|hicp|ppi|producer prices?|consumer prices?|gdp)\b",re.I)
+    for region,names in RELEASE_SUBJECTS.items()}
 PERIOD_KINDS = {"producer_prices", "consumer_prices", "gdp", "jobs_report", "earnings"}
 
 # Only these canonical names, validated ticker symbols, and derived counts can
@@ -155,6 +171,9 @@ class Article:
     period: str | None
     event_date: str | None
     terms: frozenset[str]
+    shingles: frozenset[int]
+    figures: tuple[str, ...]
+    release_regions: tuple[str, ...]
 
     @classmethod
     def from_source(cls, row, category, feed, published):
@@ -169,6 +188,9 @@ class Article:
             names.update(f"ticker:{ticker}" for ticker in tickers if isinstance(ticker, str) and TICKER.fullmatch(ticker))
         names.update(f"ticker:{ticker}" for ticker in INLINE_TICKER.findall(text))
         body = normalize(row.get("text_content") or "")
+        words = body.split()
+        shingles = (frozenset(crc32(" ".join(words[i:i+5]).encode()) for i in range(len(words)-4))
+                    if len(words) >= 50 else frozenset())
         author = row.get("source") or ""
         return cls(
             row["$id"], row["permalink"], row["language"], feed, published,
@@ -177,6 +199,8 @@ class Article:
             tuple(sorted(names))[:12], kinds, reporting_period(headline, excerpt[:400], kinds, published),
             named_event_date(headline, excerpt[:400], published),
             frozenset(normalize(word) for word in PROPER_WORD.findall(text)),
+            shingles, tuple(re.findall(r"\d+(?:[.,]\d+)*",body)),
+            tuple(code for code,pattern in RELEASE_PATTERNS.items() if pattern.search(headline)),
         )
 
     def descriptor(self):
@@ -188,6 +212,7 @@ class Article:
             "event_types": self.kinds,
             "reporting_period": self.period,
             "mentioned_date": self.event_date,
+            "release_regions":self.release_regions,
         }
 
 
@@ -221,6 +246,21 @@ class Comparison:
             self.gap_hours <= 168 and self.shared_kind
             and (self.shared_period or (self.shared_actors and self.shared_event_date))
         )
+
+    def local_candidate(self, articles):
+        """Use the embedding match and occurrence details to shortlist for the small local classifier."""
+        a, b = articles[self.left], articles[self.right]
+        if a.release_regions and b.release_regions and set(a.release_regions)!=set(b.release_regions):
+            return False
+        kinds = set(a.kinds).intersection(b.kinds)
+        national_release = kinds.intersection({"producer_prices","consumer_prices","gdp","jobs_report","rate_decision"})
+        a_regions, b_regions = (set(r.regions)-{"unknown","global"} for r in (a,b))
+        if national_release and len(a_regions) == len(b_regions) == 1 and a_regions.isdisjoint(b_regions):
+            return False
+        if self.shared_kind and (self.shared_actors or self.shared_period or (national_release and a_regions & b_regions)):
+            return True
+        # A high-similarity pair with a shared name can be an occurrence outside the event lexicon.
+        return self.similarity >= .925 and self.shared_terms >= 3 and self.gap_hours <= 48
 
     def payload(self, articles):
         return {
@@ -294,8 +334,27 @@ class CandidateIndex:
 def reporting_origins(articles, index):
     """Map confirmed copies and translations to representative article indices."""
     exact, representatives = {}, {}
+    anchors = defaultdict(list)
     for i, article in enumerate(articles):
-        representatives[i] = exact.setdefault(article.body_hash, i) if article.body_hash else i
+        if article.body_hash in exact:
+            representatives[i] = exact[article.body_hash]
+            continue
+        representative = i
+        keys = [(article.language,k) for k in sorted(article.shingles)[:4]]
+        for j in sorted({j for k in keys for j in anchors[k]}):
+            other = articles[j]
+            if (article.figures != other.figures or abs((article.published-other.published).days)>3
+                    or conflicting_periods(article,other)):
+                continue
+            if len(article.shingles & other.shingles) >= .90 * len(article.shingles | other.shingles):
+                representative = j
+                break
+        representatives[i] = representative
+        if article.body_hash:
+            exact[article.body_hash] = representative
+        if representative == i:
+            for k in keys:
+                anchors[k].append(i)
 
     english = defaultdict(list)
     for i, article in enumerate(articles):

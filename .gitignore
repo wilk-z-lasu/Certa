@@ -2,5 +2,14 @@ __pycache__/
 /output/
 .env
 .codex-python/
+.venv/
 *.manifest.json
+/user_data/briefings/
+/user_data/listener_preferences.json
+/user_data/user_liked_categories
+/user_data/preAI.json
+/user_data/script.md
+/user_data/news.wav
 
+/user_data/listeners.sqlite3*
+/user_data/listeners/

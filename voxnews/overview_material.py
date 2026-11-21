@@ -41,7 +41,7 @@ QUANTITY = re.compile(r"(?<![\w.])(?P<currency>[$€£¥]|(?:USD|EUR|GBP|JPY)\s+
                       r"megawatts?|gigawatts?|terabytes?|gigabytes?|MW|GW|GB|km|barrels?)(?!\w))?", re.I)
 BOUNDARY = re.compile(r"[.!?]+[”’\"')\]]*(?=\s|$)|\n+")
 ABBREV = re.compile(r"(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Inc|Corp|Ltd|vs|ca|z\.B|bzw|Nr|e\.g|i\.e)|\b[A-Z](?:\.[A-Z])+|\b[A-Z])\.$")
-BOILERPLATE = re.compile(r"^(?:click here|read (?:also|more):|also read:|zacks'? (?:top|free) stock|"
+BOILERPLATE = re.compile(r"^(?:follow\b.{0,120}(?:channel|telegram)|subscribe\b|sign up\b|click here|read (?:also|more):|also read:|zacks'? (?:top|free) stock|"
                          r"want the latest recommendations|to read this article on zacks|the views and opinions expressed|"
                          r"originally published on|bildquelle:|lees ook:|lesen sie auch:)\b", re.I)
 FOOTER = re.compile(r"\b(?:AI disclosure:\s*AI tools|KI[- ](?:Offenlegung|Hinweis):|AI[- ](?:vermelding|disclosure):|"
@@ -182,6 +182,7 @@ def passage_material(event_id, sources, articles):
         field = next((k for k in ("text_content", "excerpt", "headline") if article.get(k, "").strip()), "headline")
         text = article[field]
         kept = 0
+        previous_left = 0
         footer = FOOTER.search(text)
         body = text[:footer.start()] if footer else text
         spans = []
@@ -198,7 +199,7 @@ def passage_material(event_id, sources, articles):
             # Case and punctuation can change the meaning (US/us, questions, signs).
             # Only identical text shares a claim; translations retain their own spans.
             needs_context = (left != start or end != right or re.match(
-                r"^(?:It|That|This|They|He|She|These|Those|The former|Das|Dies|Het|Dit|Ze)\b", statement, re.I))
+                r"^(?:It|Its|That|This|They|Their|He|His|She|Her|These|Those|The (?:former|company|bank|operator)|Das|Dies|Het|Dit|Ze)\b", statement, re.I))
             context = [left, right] if left != start or end != right else None
             if needs_context and not context and kept:
                 context = [previous_left, right]

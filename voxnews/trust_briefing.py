@@ -12,7 +12,7 @@ import wave
 
 from .group_events import timestamp
 from .official_releases import digest, safe_url
-from .verify import ADVICE, NUMERIC, write_atomic
+from .verify import ADVICE, qualified_wording, write_atomic
 
 
 DISCLOSURE = {"en": "This briefing uses a synthetic voice.", "de": "Diese Nachrichten werden mit einer synthetischen Stimme vorgelesen.",
@@ -35,18 +35,37 @@ MONTHS = {"en": list(calendar.month_name), "de": ["", *"Januar Februar März Apr
           "nl": ["", *"januari februari maart april mei juni juli augustus september oktober november december".split()]}
 
 
+def attributed_wording(kind, publisher, text, lang):
+    if lang == "en" and kind == "reported_fact":
+        return f"{publisher} reports: {text}"
+    labels = {
+        "en": {"forecast": "reports a forecast", "allegation": "reports an allegation", "analysis": "reports analysis"},
+        "nl": {"reported_fact": "meldt het volgende", "forecast": "meldt een prognose",
+               "allegation": "bericht over een beschuldiging", "analysis": "bericht over een analyse"},
+        "de": {"reported_fact": "berichtet Folgendes", "forecast": "berichtet über eine Prognose",
+               "allegation": "berichtet über einen Vorwurf", "analysis": "berichtet über eine Analyse"},
+    }
+    return f"{publisher} {labels[lang][kind]}. {text}"
+
+
 def spoken(claim, lang):
     if not claim["approved"] or claim["article_state"] != "supported" or not claim["support"]:
         raise ValueError("segment lacks approved article evidence")
     if claim["kind"] != "official_figure":
-        if (lang != "en" or claim["kind"] != "reported_fact" or claim.get("review", {}).get("decision") != "supported"
-                or ADVICE.search(claim["wording"]) or NUMERIC.search(claim["wording"])):
+        if (lang != "en" or not qualified_wording(claim["kind"], claim["wording"])
+                or claim.get("review", {}).get("decision") != "supported"
+                or ADVICE.search(claim["wording"])):
             raise ValueError("no approved wording for this language")
-        return f'{claim["support"][0]["publisher"]} reports: {claim["wording"]}'
+        return attributed_wording(claim["kind"], claim["support"][0]["publisher"], claim["wording"], lang)
     f = claim["fact"]
     if claim["official_state"] != "matched" or not claim["official"] or any(
             cell["value"] != f["value"] or cell["unit"] != f["unit"] for cell in claim["official"]):
         raise ValueError("official figure has inconsistent evidence")
+    return spoken_figure(f, lang)
+
+
+def spoken_figure(f, lang):
+    """Render an already approved official observation in the listener's language."""
     value = f["value"] if lang == "en" else f["value"].replace(".", ",")
     country, measure = COUNTRY[lang][f["geo"]], LABEL[lang][f["measure"]]
     level = f["basis"] == "level"

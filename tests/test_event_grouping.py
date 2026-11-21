@@ -57,6 +57,15 @@ def fake_response(payload, decision="same_event", reason="matching_occurrence"):
 
 @unittest.skipUnless(np is not None, "install requirements-events.txt for the grouping tests")
 class CandidateTests(unittest.TestCase):
+    def test_near_copy_has_one_origin_but_a_changed_figure_is_distinct(self):
+        original = " ".join(f"word{i}" for i in range(100)) + " The rate was 4 percent."
+        changed = original.replace("was 4", "was 5")
+        rows = [article(fixture("a","Local news",text_content=original)),
+                article(fixture("b","Local update",text_content=original+" Editorial update.")),
+                article(fixture("c","Revised release",text_content=changed))]
+        origins,_ = reporting_origins(rows,CandidateIndex(rows,identical_vectors(rows)))
+        self.assertEqual(origins,{0:[0,1],2:[2]})
+
     def test_different_reporting_periods_are_excluded(self):
         articles = [
             article(fixture("a", "US producer prices for September")),

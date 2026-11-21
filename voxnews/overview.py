@@ -11,14 +11,15 @@ import zlib
 
 from .event_candidates import fingerprint
 from .group_events import read_categories, timestamp
+from .geography import classify_regions
 from .luna import canonical_json
 from .official_releases import digest, safe_url
 from .overview_material import SECTIONS, passage_material
-from .trust_briefing import spoken
+from .trust_briefing import attributed_wording, spoken
 from .verify import load_feeds
 
 
-VERSION = "event-overview-2"
+VERSION = "event-overview-8"
 FIELDS = ("headline", "excerpt", "text_content")
 
 
@@ -50,6 +51,7 @@ def checked_ref(ref, role, articles):
 
 
 def import_claim(c, articles, sources, categories, cutoff, members):
+    from .overview_material import describe
     log = []
     for role, refs in (("supports", c["support"]), ("contradicts", c["contradict"]),
                        ("examined", c.get("review", {}).get("evidence_refs", []))):
@@ -77,10 +79,31 @@ def import_claim(c, articles, sources, categories, cutoff, members):
     if c["approved"] and (c["contradict"] or c["article_state"] != "supported"):
         raise ValueError("approved claim carries contradictory evidence")
     summary = spoken(c, "en") if c["approved"] else c.get("wording", "")
+    claim_regions = defaultdict(set)
+    if c["approved"]:
+        wording_regions = set(classify_regions(c["wording"],"",[])[0]) if not c.get("fact") else set()
+        for r in log:
+            if r["role"] != "supports":
+                continue
+            aid = r["source_id"]
+            if c.get("fact"):
+                claim_regions[c["fact"]["geo"]].add(aid)
+            else:
+                passage = articles[aid][r["field"]][r["start"]:r["end"]]
+                for region in wording_regions.intersection(classify_regions(passage,"",[])[0]):
+                    claim_regions[region].add(aid)
+    translations = c.get("translations", {})
+    if c["approved"] and not c.get("fact"):
+        translations = {lang: attributed_wording(c["kind"], c["support"][0]["publisher"], text, lang)
+                        for lang, text in translations.items()}
     return {"id": c["id"], "type": "checked_claim", "kind": c["kind"], "language": "en", "summary": summary,
+            "claim_regions":{region:sorted(ids) for region,ids in claim_regions.items()},
+            "translations":translations, "evidence_state":c.get("evidence_state",c["article_state"]),
+            "translation_failures": c.get("translation_failures", {}),
             "fact": c.get("fact"), "article_state": c["article_state"], "official_state": c["official_state"],
             "qualifiers": [] if c["kind"] in {"official_figure", "reported_fact"} else [c["kind"]],
-            "sections": ["development", "figures"] if c.get("fact") else ["development"],
+            "sections": list(dict.fromkeys(["development", *describe(summary)["sections"],
+                                             *(["figures"] if c.get("fact") else [])])),
             "evidence": list({canonical_json(r): r for r in log}.values()), "reasons": c["reasons"],
             "draft_use": "approved_wording" if c["approved"] else "review_only", "disagreements": []}
 
@@ -136,6 +159,13 @@ def dossier(event, sources, articles, categories, cutoff):
             item["disagreements"].append(issue_id)
             item["draft_use"] = "review_only"
     checked = [import_claim(c, articles, sources, categories, cutoff, members) for c in event["claims"]]
+    for issue in (event.get("event_review") or {}).get("issues", []):
+        issue_id = digest(["event_review", issue])
+        issues.append({"id": issue_id, "kind": issue["reason"], "comparison": "event_wide_review",
+                       "claim_ids": issue["claim_ids"], "positions": []})
+        for claim in checked:
+            if claim["id"] in issue["claim_ids"]:
+                claim["disagreements"].append(issue_id)
     by_article = defaultdict(list)
     for item in material:
         for ref in item["evidence"]:
@@ -148,7 +178,7 @@ def dossier(event, sources, articles, categories, cutoff):
             kind = "official_mismatch"
         elif claim["official_state"] in {"revised_since_reporting", "changed_since_reporting"}:
             kind = "official_revision"
-        if kind:
+        if kind and not claim["disagreements"]:
             issue_id = digest([kind, claim["id"]])
             claim["disagreements"].append(issue_id)
             issues.append({"id": issue_id, "kind": kind, "comparison": "upstream_verification",
@@ -176,22 +206,38 @@ def dossier(event, sources, articles, categories, cutoff):
         item["priority"] = priority(item)
     ordered = sorted((i for i in items if i["draft_use"] not in {"omit","review_only"}), key=priority, reverse=True)
     sections = {k: [i["id"] for i in ordered if k in i["sections"]] for k in SECTIONS}
-    # A short synopsis covers different editorial questions. Full detail stays addressable.
+    # The event record precedes all listener-specific shortening.
     synopsis = list(dict.fromkeys(ids[0] for ids in sections.values() if ids))
+    if event.get("overview_claim_ids"):
+        synopsis = list(dict.fromkeys([*event["overview_claim_ids"], *synopsis]))
+    approved = [i for i in checked if i["draft_use"] == "approved_wording"]
+    coverage = {section: {"available_passages": sum(section in i["sections"] for i in material),
+                          "approved_claim_ids": [i["id"] for i in approved if section in i["sections"]]}
+                for section in SECTIONS}
     origin_count = len({sources[aid]["origin"] for aid in members})
     primary = min(members, key=lambda aid: (sources[aid]["language"] != "en", timestamp(sources[aid]["published_at"]), aid))
     scope = {field: {tag: sorted(aid for aid in members if tag in sources[aid][field])
                      for tag in sorted({v for aid in members for v in sources[aid][field]})}
              for field in ("topics", "regions")}
+    reported_regions = sorted(scope["regions"])
+    regional_support = defaultdict(set)
+    for item in approved:
+        for region, ids in item["claim_regions"].items():
+            if region != "unknown":
+                regional_support[region].update(ids)
+    scope["regions"] = {region: sorted(ids) for region, ids in regional_support.items()}
     return {"event_id": event["event_id"], "verification_revision": event["revision"], "version": VERSION,
             "title": sources[primary]["title"], "title_source_id": primary,
             "topics": sorted({t for aid in members for t in sources[aid]["topics"]}),
-            "regions": sorted({r for aid in members for r in sources[aid]["regions"]}),
+            "regions": sorted(regional_support), "reported_regions": reported_regions,
             "languages": sorted({sources[aid]["language"] for aid in members}),
             "members": sorted(members), "origin_count": origin_count, "sources": sources, "scope_evidence": scope,
             "group_needs_review": event["group_needs_review"], "model_versions": event.get("model_versions", {}),
+            "model_status":event["model_status"], "processing_failure":event.get("failure"),
+            "event_review": event.get("event_review"),
             "reporting_chronology": sorted(members, key=lambda aid: (timestamp(sources[aid]["published_at"]), aid)),
             "synopsis_ids": synopsis, "sections": sections, "items": items, "disagreements": issues,
+            "overview_coverage": coverage, "examined_passages": event.get("examined_passages", []),
             "limitations": (["one_reporting_origin"] if origin_count == 1 else [])
                            + (["no_approved_wording"] if not any(i["draft_use"] == "approved_wording" for i in items) else [])
                            + (["unresolved_grouping"] if event["group_needs_review"] else [])}
@@ -206,6 +252,11 @@ CREATE TABLE IF NOT EXISTS article_location(article_id TEXT PRIMARY KEY, feed_fi
 CREATE TABLE IF NOT EXISTS build_info(id INTEGER PRIMARY KEY CHECK(id=1), metadata TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS overview_batch(key TEXT PRIMARY KEY, proposal TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS preferred_overview(base TEXT PRIMARY KEY, revision TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS daily_window(cutoff TEXT PRIMARY KEY, window_start TEXT);
+CREATE TABLE IF NOT EXISTS daily_event(cutoff TEXT, event_id TEXT, revision TEXT, latest TEXT,
+    PRIMARY KEY(cutoff,event_id), FOREIGN KEY(revision) REFERENCES overview_revision(revision));
+CREATE TABLE IF NOT EXISTS source_location_version(article_id TEXT, fields TEXT, url TEXT,
+    directory TEXT, feed_file TEXT, offset INTEGER, size INTEGER, PRIMARY KEY(article_id,fields,url));
 """
 
 
@@ -274,6 +325,14 @@ def build(verified, directory, category_path, database):
                 issue_counts.update(i["kind"] for i in overview["disagreements"])
             if seen != set(articles):
                 raise ValueError("verification membership differs from the source window")
+            bound = cutoff.isoformat()
+            db.execute("INSERT OR REPLACE INTO daily_window VALUES (?,?)", (bound, start.isoformat() if start else None))
+            db.execute("DELETE FROM daily_event WHERE cutoff=?", (bound,))
+            db.execute("INSERT INTO daily_event SELECT ?,event_id,revision,latest FROM catalogue", (bound,))
+            source_root = os.path.relpath(directory.resolve(), database.resolve().parent)
+            db.executemany("INSERT OR REPLACE INTO source_location_version VALUES (?,?,?,?,?,?,?)", (
+                (aid, digest({k: fingerprint(a[k]) for k in FIELDS}), a["permalink"], source_root,
+                 a["feed_file"], a["byte_offset"], a["byte_length"]) for aid, a in articles.items()))
             db.executemany("INSERT OR REPLACE INTO article_location VALUES (?,?,?,?)",
                            ((aid, a["feed_file"], a["byte_offset"], a["byte_length"]) for aid, a in articles.items()))
             report = {"version": VERSION, **summary, "cache_hits": summary["cache_hits"], "topics": dict(topic_counts),

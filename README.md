@@ -1,5 +1,78 @@
 # VoxNews
 
+## Run the daily backend
+
+Use Python 3.10 or newer. From the repository root, these commands import all six feeds and prepare two historical days using the bundled official observations. The dates are the last included UTC calendar days. Each window ends at midnight the following day.
+
+```sh
+python3 -m voxnews.daily --offline --date 2026-11-17
+python3 -m voxnews.daily --offline --date 2026-11-18
+python3 app.py --port 50488
+```
+
+The offline backend uses Python's standard library and SQLite. To enable model processing on macOS or Linux, create an environment, install the embedding dependencies and download the pinned E5 files once.
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-events.txt
+mkdir -p output/e5-small
+curl --fail --location --output output/e5-small/tokenizer.json https://huggingface.co/intfloat/multilingual-e5-small/resolve/ccc66d3/tokenizer.json
+curl --fail --location --output output/e5-small/model.onnx https://huggingface.co/intfloat/multilingual-e5-small/resolve/ccc66d3/onnx/model.onnx
+```
+
+Open the printed address. Choose November 17, economy and central banks, English, and UK coverage. Save the preferences and open the briefing. Select **Claim evidence** beside a sentence to inspect its event revision, article and official source. In **Daily check-in**, ask for a shorter briefing and more currency news. Return to **Change interests** and select November 18. Previously delivered claims stay in the first edition. The profile history and immutable draft identify which settings shaped each day. Another browser profile or private window gives a second listener their own history. Try Dutch narration with euro-area coverage, or enter the wildcard listener's settings directly. Audio generation requires an explicit click.
+
+The offline preparation uses exact-copy grouping and verified official figures. Without a writer key or local provider, composition uses ordered approved sentences. A model run also performs multilingual embedding, small-model grouping, claim extraction, larger-model review and event overview creation. Install `requirements-events.txt` and obtain the pinned E5 files as described under **Group articles into events**. For local inference, start Ollama with the models listed below, then use these commands in the same shell.
+
+```sh
+export VOXNEWS_PROVIDER=ollama
+python3 -m voxnews.daily --date 2026-11-18 --lookback-days 7 --model-events 40
+python3 app.py --port 50488
+```
+
+The 40-event limit budgets extraction and review of eligible event revisions. Events containing eligible claims also pass through the overview editor. Omitting the limit reviews all eligible candidates. Invalid model outputs are held and reported in the run's verification summary. Each rerun reuses decisions tied to the relevant inputs, model and prompt. For hosted inference set `VOXNEWS_PROVIDER=openai` and use an untracked `.env` or shell environment. The provider roles can be overridden independently.
+
+Shared event overviews retain broad source coverage before listener preferences are applied. The pipeline indexes the full articles, then samples the leads of reporting origins and passages across nine editorial facets, including background, mechanisms, reactions, implications and uncertainty. Bounded extraction and review requests preserve their exact source offsets. The event overview editor must retain all approved claims. Stored `overview_coverage` records show which facets have source passages and which have approved wording. `examined_passages` records the actual reviewed ranges. Remaining source material stays in the internal dossier for inspection. Selection for headlines, standard or detailed delivery happens in the listener draft.
+
+Before publication, the larger model also compares the event's checked claims together for conflicting accounts, incompatible timing and missing attribution. Each issue must cite the affected claims and their supplied evidence. Flagged claims stay available in the source inspector and are excluded from listener drafts. An event that exceeds the local review window stays pending for a provider with a larger context window. A failed translation is held for its language while the valid English record and other reviewed translations remain available.
+
+If other checked facts from an event with unresolved reporting are selected, the final transcript includes a localized uncertainty caveat. Transcript validation requires that caveat alongside the selected wording and source links.
+
+Source-supported forecasts, allegations and analysis can supply context when their wording preserves explicit attribution and uncertainty. Their kind stays attached to the shared record and listener draft, and the spoken wording labels it. They are checked as reports of a position rather than established outcomes. Investment recommendations are excluded. Translated prose retains the publisher attribution and passes separate checks for meaning, numeric value, scale, currency, units and dates.
+
+| Model role | Variable | Local default | Hosted default |
+| --- | --- | --- | --- |
+| Topic review and event grouping | `VOXNEWS_GROUPING_MODEL` | qwen3.5:0.8b-mlx | gpt-6-luna |
+| Claim extraction | `VOXNEWS_EXTRACTION_MODEL` | qwen3.5:4b-mlx | gpt-6-luna |
+| Evidence review and overview | `VOXNEWS_REVIEW_MODEL` | qwen3.5:4b-mlx | gpt-6.2-astra |
+| Daily composition | `VOXNEWS_COMPOSITION_MODEL` | qwen3.5:4b-mlx | gpt-6.2-astra |
+
+The local models must be installed under the configured names. For hosted use, select model IDs available to your account. The writer chooses and orders cited claims. The renderer supplies the reviewed wording, date, section transitions and disclosure in the listener's language. Missing coverage can produce a short edition or no edition. An audio failure leaves the text available. Segment generation uses ElevenLabs and `ffprobe` for measured durations.
+
+### Records, inspection and cleanup
+
+The source store is `output/sources.sqlite3`. Each import retains the complete original records, feed membership and classification. Frozen source files in `output/imports/` make earlier citations resolvable after a correction. `output/days/YYYY-MM-DD/` holds the verification snapshot and stage report. `output/event-overviews.sqlite3` stores date-specific membership and immutable dossiers. Set `VOXNEWS_OVERVIEW_DB` to serve a different catalogue. The default lookback is seven days. A date must have its own published catalogue. Earlier dates can be replayed after later catalogues have been built.
+
+`user_data/listeners.sqlite3` contains browser-specific profile versions, daily feedback, drafts and final text. `GET /api/profile` lists that listener's settings, history and delivered dates. A repeat request for the same day returns its original edition. Segmented audio, when generated, is stored in `user_data/listeners/`. The earlier single-listener interface remains at `/picker`.
+
+The evaluation CLI compares final event memberships against labeled pairs and traces saved transcript sentences back to their immutable source editions.
+
+```sh
+python3 -m voxnews.evaluate grouping output/days/2026-11-18/events.jsonl
+python3 -m voxnews.evaluate transcript --edition EDITION_ID
+```
+
+Generate the measured preparation and listener cost report with the following command. Add `--briefing` for each saved example or final briefing JSON. For hosted projections, supply `--prices` with actual per-million input, cached-input and output prices keyed by model ID, plus `--rates-date YYYY-MM-DD`. Unpriced hosted usage stays unknown. The two projections scale new article volume and listener count separately. Local inference has zero model API fees. Hardware, electricity and subscription costs need separate accounting. Speech measurements and listening review are pending the deferred ElevenLabs verification.
+
+```sh
+python3 -m voxnews.cost output/days/2026-11-19/report.json
+```
+
+The proposed initial payer is a publisher offering a personalized morning briefing to subscribers. Editors import the licensed feeds, inspect held events and source disagreements, and publish the day's shared catalogue. Listener setup and feedback then shape drafts from those saved event revisions. A correction creates a new revision, while earlier editions retain their original evidence. The validated introduction discloses synthetic narration in the listening language. This publisher proposition is a product hypothesis that still needs customer validation.
+
+Use the grouping command after a model run. Supply `--reference PATH` to evaluate a separate reference file in the format under `examples/`. The bundled reference is a targeted manual sample. For end-of-event deletion, remove the original licensed feeds, all generated output directories including SQLite databases, cached model decisions and frozen imports, local listener data and media, exported bundles, and team copies or backups. Retain licensed material only within the authorized team and event period.
+
 ## Run the hackathon demo offline
 
 Copy [the demo ZIP](output/voxnews-offline-demo.zip) to the presentation computer, extract the entire archive, and open **index.html** in a browser. The two recordings, transcripts, per-sentence evidence, searchable event catalogue and claim source logs work from disk. Only links out to publishers and official releases require internet access. The presentation computer needs no Python, Ollama, model weights, GPU or API key.
@@ -12,8 +85,10 @@ From the repository root, run with Python 3.9 or newer.
 
 ```powershell
 python -m voxnews.categorize --input-dir liquid-briefing-data --output output/categories.jsonl
-python -m unittest discover -s tests -v
+python tests/check_backend.py
 ```
+
+The backend check command covers classification, grouping, verification, broad event dossiers, text delivery and feedback. The ElevenLabs adapter test is deferred by default and can be selected later with `--include-audio`. The backend checks exercise no ElevenLabs requests.
 
 The CLI writes one record per article and prints counts by feed and overall timing. It accepts JSONL feeds with the Newstex article fields and reports bad rows and duplicate IDs with file and line numbers. The destination is replaced after the complete run succeeds. To use the classifier from Python, call `voxnews.categorization.categorize_article(article)` with a decoded article object.
 

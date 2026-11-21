@@ -161,6 +161,7 @@ def synthesize_chunk(
     output_format: str,
     timeout: float,
     retries: int,
+    telemetry: dict | None = None,
 ) -> tuple[bytes, str | None]:
     url = f"{API_BASE}/{urllib.parse.quote(voice_id, safe='')}?{urllib.parse.urlencode({'output_format': output_format})}"
     body = json.dumps({"text": text, "model_id": model_id}).encode("utf-8")
@@ -171,10 +172,15 @@ def synthesize_chunk(
         headers={"xi-api-key": api_key, "Content-Type": "application/json"},
     )
     for attempt in range(retries + 1):
+        if telemetry is not None:
+            telemetry["retries"] = attempt
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 audio = response.read()
                 request_id = response.headers.get("request-id") or response.headers.get("xi-request-id")
+                if telemetry is not None:
+                    billed = response.headers.get("character-cost")
+                    telemetry["provider_character_cost"] = int(billed) if billed and billed.isdecimal() else None
                 if not audio:
                     raise RuntimeError("ElevenLabs returned an empty audio response")
                 return audio, request_id

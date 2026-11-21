@@ -72,10 +72,17 @@ def form_groups(index, origins, comparisons, decisions):
 
 def stable_event_ids(groups, origins, articles, previous):
     available = {article.id: i for i, article in enumerate(articles)}
-    previous_by_anchor = {
-        available[event["anchor_article_id"]]: event["event_id"]
-        for event in previous if event["anchor_article_id"] in available
-    }
+    previous_by_anchor = {}
+    for event in previous:
+        owner = available.get(event["anchor_article_id"])
+        if owner is None:
+            surviving = [available[s["article_id"]] for s in event.get("sources",[]) if s["article_id"] in available]
+            if not surviving:
+                continue
+            owner = min(surviving)
+        if owner in previous_by_anchor:
+            raise ValueError("previous events share an anchor or surviving member")
+        previous_by_anchor[owner] = event["event_id"]
     reserved = set(previous_by_anchor.values())
     for anchor, members in groups.items():
         carried = [previous_by_anchor[i] for i in sorted(i for member in members for i in origins[member]) if i in previous_by_anchor]
@@ -85,7 +92,7 @@ def stable_event_ids(groups, origins, articles, previous):
         yield anchor, event_id, carried[1:]
 
 
-def event_records(groups, origins, reviews, origin_reviews, articles, decisions, previous):
+def event_records(groups, origins, reviews, origin_reviews, articles, decisions, previous, model=MODEL, prompt_version=None):
     review_candidates = defaultdict(list)
     for (left, right), decision in sorted(decisions.items()):
         for anchor, other in ((left, right), (right, left)):
@@ -110,7 +117,12 @@ def event_records(groups, origins, reviews, origin_reviews, articles, decisions,
                         **decisions[(anchor, origin)].as_record(),
                     }
                 else:
-                    method = "exact_copy" if article.body_hash and article.body_hash == canonical.body_hash else "invezz_translation"
+                    if article.body_hash and article.body_hash == canonical.body_hash:
+                        method = "exact_copy"
+                    elif article.language == canonical.language:
+                        method = "near_copy"
+                    else:
+                        method = "invezz_translation"
                     grouping = {"method": method, "matched_article_id": canonical.id}
                 origin_uncertain = i in origin_reviews
                 if origin_uncertain:
@@ -129,5 +141,5 @@ def event_records(groups, origins, reviews, origin_reviews, articles, decisions,
             "status": status, "review_reasons": sorted(set(reasons)),
             "superseded_event_ids": superseded, "sources": sources,
             "review_candidates": review_candidates[anchor][:8],
-            "grouping_model": MODEL, "prompt_version": PROMPT_VERSION,
+            "grouping_model": model, "prompt_version": prompt_version or PROMPT_VERSION,
         }
