@@ -14,7 +14,7 @@ from md_to_speech import generate_news_audio
 from voxnews import daily_web
 from voxnews import providers
 from voxnews.editions import picker_options
-from voxnews.listeners import current, storage
+from voxnews.listeners import people, persona_profile, storage
 from voxnews.topic_rules import TOPIC_LABELS
 
 DIRECTORY = Path(__file__).resolve().parent / "user_data"
@@ -32,9 +32,9 @@ main{max-width:900px;margin:auto;padding:clamp(20px,5vw,60px)}
 header{border-bottom:2px solid;padding-bottom:12px;font:bold 1.45rem Georgia}
 h1{font:normal clamp(2.3rem,6vw,4rem)/1.05 Georgia;margin:40px 0 12px}
 #choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr));gap:10px;margin:25px 0}
-label{background:white;border:1px solid #a9b8ac;border-radius:8px;padding:12px;display:flex;align-items:center;gap:8px;overflow-wrap:anywhere;cursor:pointer}
-label:has(:checked){background:#dbecd9;border-color:#27664d}input{accent-color:#27664d}
-label:has(:disabled){background:#efefe8;color:#526761;cursor:default}
+#choices label{background:white;border:1px solid #a9b8ac;border-radius:8px;padding:12px;display:flex;align-items:center;gap:8px;cursor:pointer}
+#choices label:has(:checked){background:#dbecd9;border-color:#27664d}input{accent-color:#27664d}
+#choices label:has(:disabled){background:#efefe8;color:#526761;cursor:default}
 footer{display:flex;align-items:center;gap:20px;flex-wrap:wrap}button{border:0;border-radius:7px;background:#205942;color:white;padding:12px 20px;font:inherit;cursor:pointer}
 button:disabled{background:#d6ddd5;color:#49584b;cursor:default}
 
@@ -195,6 +195,31 @@ button:disabled{background:#d6ddd5;color:#49584b;cursor:default}
 }
 .transcript h2 { margin: 0 0 12px; font: normal 1.6rem Georgia; }
 #script { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 68ch; line-height: 1.7; }
+.listener-picker, .preference-fields, .topic-weights {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 12px;
+}
+.listener-picker {
+  align-items: end; margin: 0 0 20px; padding: 16px; border: 1px solid #d5dfd3;
+  border-radius: 14px; background: #fffefa;
+}
+.listener-actions { display: flex; flex-wrap: wrap; align-items:center; gap:8px; }
+.listener-picker dialog { max-width: min(26rem,90vw); padding: 20px; border: 1px solid #b4bfb8; border-radius: 12px; }
+.listener-picker dialog p { margin-bottom: 16px; overflow-wrap: anywhere; }
+.listener-picker dialog::backdrop { background: #10251d66; }
+.listener-picker p { grid-column: 1 / -1; margin: 0; }
+.listener-picker p:empty { display: none; }
+.preference-fields { margin-bottom: 16px; }
+.preference-fields label, .listener-picker label, .topic-weights label { display: grid; gap: 5px; min-width: 0; }
+.preference-fields select, .preference-fields input, .listener-picker select,
+.listener-picker input, .topic-weights input {
+  width: 100%; min-width: 0; padding: 10px; border: 1px solid #a9b8ac; border-radius: 8px;
+  background: white; color: inherit; font: inherit;
+}
+#picker fieldset { min-width: 0; padding: 0; border: none; }
+#picker legend, .listener-picker label, .preference-fields label { font-weight: 600; }
+#picker #choices { margin-top: 10px; }
+.topic-weights { padding-block: 12px; }
+#picker :focus-visible { outline: 3px solid #27664d; outline-offset: 3px; }
 </style>
 <main><header>VoxNews</header><section id="picker"><h1>What interests you today?</h1>
 <!--TOPIC_FORM-->
@@ -203,7 +228,7 @@ button:disabled{background:#d6ddd5;color:#49584b;cursor:default}
 <h1 id="failure-title" tabindex="-1">Could not prepare your briefing</h1>
 <p id="failure-detail" role="status"></p>
 <footer><button id="retry" type="button">Try again</button>
-<button id="change" type="button">Change categories</button></footer>
+<button id="change" type="button">Edit preferences</button></footer>
 </section>
 <section id="briefing" aria-labelledby="briefing-title" hidden>
   <div class="briefing-card">
@@ -244,7 +269,7 @@ button:disabled{background:#d6ddd5;color:#49584b;cursor:default}
 </section></main>
 <script>
 const form=document.querySelector('form'), choices=document.querySelector('#choices'),
-button=form.querySelector('button');
+button=form.querySelector('button[type=submit]');
 const picker=document.querySelector('#picker'), failed=document.querySelector('#failed'),
 failureDetail=document.querySelector('#failure-detail');
 const briefing=document.querySelector('#briefing'), briefingTitle=document.querySelector('#briefing-title'),
@@ -277,14 +302,15 @@ let currentBriefing=null;
 function updateCount(){
   const n=selected().length;
   document.querySelector('#count').textContent=n+' selected';
-  button.disabled=n===0;
+  button.disabled=n===0 || form.dataset.adding==='true';
 }
 choices.onchange=updateCount;
 const daily=form.dataset.daily==='true';
+const persona=form.elements.namedItem('persona');
 const day=document.querySelector('#day');
-region.onchange=language.onchange=()=>form.submit();
-if(day) day.onchange=()=>form.submit();
+if(!daily) region.onchange=language.onchange=()=>form.submit();
 async function post(path, payload){
+  if(persona?.value && !path.startsWith('/api/people')) path+='?'+new URLSearchParams({persona:persona.value});
   const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   if(!response.ok) throw Error(await response.text());
   return response.json();
@@ -301,12 +327,77 @@ async function saveProfile(){
   return profile;
 }
 if(daily){
-  document.querySelector('#save-profile').onclick=async()=>{
+  const chooser=document.querySelector('#persona-chooser');
+  chooser.onchange=()=>{
+    const params=new URLSearchParams({date:day.value});
+    if(chooser.value) params.set('persona',chooser.value);
+    else params.set('persona','');
+    window.location.assign('/?'+params);
+  };
+  const newName=document.querySelector('#new-listener');
+  const add=document.querySelector('#add-listener');
+  const remove=document.querySelector('#remove-listener');
+  const removalDialog=document.querySelector('#remove-dialog');
+  const confirmRemoval=document.querySelector('#confirm-remove');
+  const cancel=document.querySelector('#cancel-listener');
+  const save=document.querySelector('#save-profile');
+  const listenerStatus=document.querySelector('#listener-status');
+  function setAdding(adding){
+    form.dataset.adding=adding;
+    newName.hidden=!adding;
+    cancel.hidden=!adding || !chooser.options.length;
+    remove.hidden=adding || !chooser.options.length;
+    save.disabled=adding;
+    add.textContent=adding?'Create listener':'Add user';
+    updateCount();
+  }
+  if(!chooser.options.length){
+    chooser.disabled=true;
+    setAdding(true);
+    listenerStatus.textContent='Create a listener to get a briefing.';
+  }
+  remove.onclick=()=>{
+    document.querySelector('#remove-question').textContent='Remove '+chooser.selectedOptions[0].textContent+' from your listener list?';
+    removalDialog.showModal();
+  };
+  document.querySelector('#cancel-remove').onclick=()=>removalDialog.close();
+  confirmRemoval.onclick=async()=>{
+    confirmRemoval.disabled=true;
+    try{
+      await post('/api/people/remove',{id:chooser.value});
+      window.location.replace('/?'+new URLSearchParams({date:day.value}));
+    }catch(e){
+      removalDialog.close(); listenerStatus.textContent=e.message;
+    }finally{confirmRemoval.disabled=false;}
+  };
+  cancel.onclick=()=>{ window.location.reload(); };
+  newName.querySelector('input').onkeydown=event=>{
+    if(event.key==='Enter'){event.preventDefault(); add.click();}
+  };
+  add.onclick=async()=>{
+    if(newName.hidden){
+      setAdding(true);
+      listenerStatus.textContent='Enter a name and set preferences below.';
+      newName.querySelector('input').focus();
+      return;
+    }
+    const input=newName.querySelector('input');
+    if(!input.value.trim()){listenerStatus.textContent='Enter a listener name.'; input.focus(); return;}
+    if(!selected().length){listenerStatus.textContent='Choose at least one topic.'; return;}
+    if(!form.reportValidity()) return;
+    chooser.disabled=add.disabled=cancel.disabled=true;
+    try{
+      const person=await post('/api/people',{name:input.value,settings:settings()});
+      window.location.assign('/?'+new URLSearchParams({persona:person.id,date:day.value}));
+    }catch(e){listenerStatus.textContent=e.message; chooser.disabled=!chooser.options.length; add.disabled=cancel.disabled=false;}
+  };
+  save.onclick=async()=>{
+    if(!form.reportValidity()) return;
     try{await saveProfile(); statusMessage('Preferences saved.');}catch(e){statusMessage(e.message);}
   };
   const feedback=document.querySelector('#feedback-form');
   for(const topic of choices.querySelectorAll('input')){
-    for(const field of [feedback.more,feedback.less]) field.add(new Option(topic.parentNode.textContent.split(' (')[0],topic.value));
+    for(const field of [feedback.more,feedback.less]) field.add(new Option(topic.parentNode.textContent,topic.value));
   }
   async function submitFeedback(answers,undo=false){
     try{
@@ -324,7 +415,7 @@ if(daily){
   document.querySelector('#skip-feedback').onclick=()=>submitFeedback({skip:true});
   document.querySelector('#undo-feedback').onclick=()=>submitFeedback(null,true);
 }
-function statusMessage(text){document.querySelector('#picker [role=status]').textContent=text;}
+function statusMessage(text){document.querySelector('#picker-status').textContent=text;}
 function renderTranscript(result){
   scriptText.replaceChildren();
   if(!result.spoken_segments) scriptText.append(document.createTextNode(result.script.split('\n\n')[0]));
@@ -339,9 +430,10 @@ function renderTranscript(result){
       link.href=source.url; link.textContent=source.label;
       p.append(link, document.createTextNode(' '));
     }
-    if(segment.kind==='claim'){
+    if(segment.claim_id && segment.event_id && segment.revision){
       const a=document.createElement('a'); a.textContent='Claim evidence';
-      a.href='/evidence/'+encodeURIComponent(segment.event_id)+'/'+segment.revision+'#c'+segment.claim_id;
+      const claim=encodeURIComponent(segment.claim_id);
+      a.href='/evidence/'+encodeURIComponent(segment.event_id)+'/'+encodeURIComponent(segment.revision)+'?claim='+claim+'#c'+claim;
       p.append(a);
     }
     scriptText.append(p);
@@ -362,12 +454,14 @@ async function saveInterests(){
       const profile=await saveProfile();
       currentBriefing=await post('/api/briefing',{date:day.value,version:profile.version});
       renderTranscript(currentBriefing);
-      briefingTitle.textContent='Your daily briefing · '+currentBriefing.date;
+      const name=document.querySelector('#persona-chooser').selectedOptions[0]?.textContent;
+      briefingTitle.textContent=(name||'Your daily briefing')+' · '+currentBriefing.date;
       transcript.hidden=false; transcriptToggle.hidden=false;
       transcriptToggle.setAttribute('aria-expanded','true'); transcriptToggle.textContent='Hide transcript';
       document.querySelector('#check-in').hidden=false;
       document.querySelector('#listen').hidden=false;
-      setStage('ready','Transcript ready'); return;
+      setStage('ready',currentBriefing.profile_version===profile.version?'Transcript ready':
+        'Saved transcript loaded. Your new preferences apply to the next edition.'); return;
     }
     const response=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({topics:selected(), region:region.value || null, language:language.value})});
@@ -397,14 +491,19 @@ async function narrate(result) {
       const section=document.querySelector('#daily-audio'), media=section.querySelector('audio'), list=section.querySelector('ol');
       list.replaceChildren(); section.hidden=false;
       let index=0;
-      const play=i=>{index=i; media.src=manifest.segments[i].url; media.play().catch(()=>{});};
+      const play=i=>{
+        index=i; media.src=manifest.segments[i].url;
+        media.play().catch(()=>{if(currentBriefing===result) audioFailed('Could not start playback.');});
+      };
       manifest.segments.forEach((part,i)=>{
         const li=document.createElement('li'), choice=document.createElement('button');
-        choice.type='button'; choice.textContent=part.text; choice.onclick=()=>play(i); li.append(choice); list.append(li);
+        choice.type='button'; choice.textContent=formatTime(part.start_seconds)+' · '+part.text;
+        choice.onclick=()=>play(i); li.append(choice); list.append(li);
       });
       media.src=manifest.segments[0].url;
       media.onended=()=>{if(index+1<manifest.segments.length) play(index+1);};
-      setStage('ready','AI-generated narration · '+formatTime(manifest.duration)); return;
+      media.onerror=()=>{if(currentBriefing===result) audioFailed('Could not load the audio segment.');};
+      setStage('ready','Synthetic narration · '+formatTime(manifest.duration)); return;
     }
     const response = await fetch('/narrate', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({edition:result.edition, script:result.script})
@@ -416,8 +515,8 @@ async function narrate(result) {
     }
     const audio=await response.blob();
     if(currentBriefing===result) player.src = URL.createObjectURL(audio);
-  } catch {
-    if(currentBriefing===result) audioFailed('Could not load the audio.');
+  } catch(e) {
+    if(currentBriefing===result) audioFailed(daily && e.message ? e.message : 'Could not load the audio.');
   }
 }
 
@@ -429,6 +528,11 @@ function audioFailed(message) {
     URL.revokeObjectURL(source);
   }
   controls.hidden = true;
+  if(daily){
+    const section=document.querySelector('#daily-audio');
+    section.querySelector('audio').pause();
+    section.hidden=true;
+  }
   download.hidden = true;
   download.removeAttribute('href');
   retryAudio.hidden = false;
@@ -537,7 +641,7 @@ REGION_NAMES = {
 }
 
 
-def picker_page(options, region, language, selected, profile=None):
+def picker_page(options, region, language, selected, profile=None, listeners=(), persona=None):
     def option(value, label, current):
         return f'<option value="{escape(value)}"{" selected" if value == current else ""}>{escape(label)}</option>'
 
@@ -553,21 +657,30 @@ def picker_page(options, region, language, selected, profile=None):
         checked = enabled and topic["id"] in selected
         count += int(checked)
         state = " disabled" if not enabled else " checked" if checked else ""
-        local = f', {topic["local"]} local' if daily and region else ""
         choices.append(f'<label><input type="checkbox" name="topic" value="{escape(topic["id"])}"{state}>'
-                       f'{escape(topic["label"])} ({topic["events"]}{local})</label>')
+                       f'{escape(topic["label"])}</label>')
     message = "" if any(t["events"] for t in options["topics"]) else (
         "No approved reporting for this area and language. Try another selection.")
     extra = save = details = ""
     if daily:
+        personas = "".join(option(person["id"], person["name"], persona or "") for person in listeners)
+        chooser = (f'<div class="listener-picker"><label>Listener <select id="persona-chooser">{personas}</select></label>'
+                   '<label id="new-listener" hidden>Name <input type="text" maxlength="60" autocomplete="off"></label>'
+                   '<div class="listener-actions"><button type="button" id="add-listener">Add user</button>'
+                   '<button type="button" id="remove-listener">Remove persona</button>'
+                   '<button type="button" id="cancel-listener" hidden>Cancel</button>'
+                   '</div><p id="listener-status" role="status"></p>'
+                   '<dialog id="remove-dialog" aria-labelledby="remove-question"><p id="remove-question"></p>'
+                   '<div class="listener-actions"><button type="button" id="cancel-remove" autofocus>Cancel</button>'
+                   '<button type="button" id="confirm-remove">Remove</button></div></dialog></div>')
         dates = "".join(option(d,d,options["date"]) for d in options["dates"])
         depths = "".join(option(d,d.title(),profile.get("depth","standard")) for d in ("headlines","standard","detailed"))
         extra = f'<label>Briefing date <select name="date" id="day">{dates}</select></label>'
         weights = "".join(f'<label>{escape(label)} <input data-weight="{t}" name="weight_{t}" type="number" min="-2" max="2" value="{profile.get("weights",{}).get(t,0)}"></label>'
                           for t,label in TOPIC_LABELS.items())
-        details = (f'<label>Minutes <input name="minutes" type="number" min="1" max="10" value="{profile.get("minutes",3)}"></label>'
+        details = (f'<div class="preference-fields"><label>Minutes <input name="minutes" type="number" min="1" max="10" required value="{profile.get("minutes",3)}"></label>'
                    f'<label>Detail <select name="depth">{depths}</select></label>'
-                   f'<details><summary>Topic priority (−2 to +2)</summary>{weights}</details>')
+                   f'</div><details><summary>Topic priority (−2 to +2)</summary><div class="topic-weights">{weights}</div></details>')
         if language in {"de","nl"} and not region:
             details += '<p>Suggested local coverage: ' + ("Germany" if language=="de" else "Netherlands") + '. Choose it under Coverage area or keep All regions.</p>'
         save = '<button type="button" id="save-profile">Save preferences</button>'
@@ -575,16 +688,18 @@ def picker_page(options, region, language, selected, profile=None):
                     'Publication dates are labeled separately from event dates and data periods such as October.</p>')
         if providers.cloud_only():
             details += '<p>Cloud-only demo · OpenAI</p>'
-            if providers.requests_paused():
-                details += '<p>New briefing generation is paused to preserve API credits. Cached news and evidence remain available.</p>'
+            if providers.requests_paused() or not providers.api_key():
+                details += '<p>Cached news and saved editions are available. To generate a new briefing, configure a key and enable OpenAI requests on the pitch machine.</p>'
+    selector = f'<input type="hidden" name="persona" value="{escape(persona or "")}">{chooser}' if daily else ""
     form = f"""<form method="get" data-daily="{str(daily).lower()}" data-version="{profile.get("version",0)}">
-{extra}
+{selector}
+<div class="preference-fields">{extra}
 <label>Briefing language <select id="language" name="language">{languages}</select></label>
-<label>Coverage area <select id="region" name="region">{regions}</select></label>
+<label>Coverage area <select id="region" name="region">{regions}</select></label></div>
 <fieldset><legend>Choose one or more topics</legend><div id="choices">{"".join(choices)}</div></fieldset>
 {details}
 <footer><button type="submit"{"" if count else " disabled"}>Get briefing</button>{save}
-<output id="count">{count} selected</output></footer></form><p role="status">{message}</p>"""
+<output id="count">{count} selected</output></footer></form><p id="picker-status" role="status">{message}</p>"""
     return PAGE.replace("<!--TOPIC_FORM-->", form)
 
 
@@ -597,8 +712,12 @@ class Picker(BaseHTTPRequestHandler):
         if getattr(self, "listener_cookie", None):
             self.send_header("Set-Cookie", self.listener_cookie)
         self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.end_headers()
+            self.wfile.write(data)
+        except ConnectionError:
+            # A browser can leave the page while a catalogue or briefing is loading.
+            pass
 
     def do_GET(self):
         url = urlsplit(self.path)
@@ -610,7 +729,7 @@ class Picker(BaseHTTPRequestHandler):
             if not runtime["ready"]:
                 return self.reply(503, '<!doctype html><html lang="en"><meta charset="utf-8">'
                     '<title>VoxNews cloud demo</title><main><h1>Cloud-only demo</h1><p>'
-                    + escape(runtime["message"]) + '</p><p>Refresh when preparation completes.</p></main></html>', "text/html")
+                    + escape(runtime["message"]) + '</p></main></html>', "text/html")
         if url.path.startswith(("/api/","/evidence/")):
             return daily_web.respond(self,DIRECTORY)
         if url.path not in {"/", "/picker", "/categories"}:
@@ -620,9 +739,14 @@ class Picker(BaseHTTPRequestHandler):
         language = params.get("language", ["en"])[0]
         try:
             if url.path == "/":
-                listener = daily_web.identity(self)
+                browser = daily_web.identity(self)
                 with storage(DIRECTORY) as db:
-                    profile = current(db,listener) or {}
+                    listeners = people(db, browser, include_legacy=True)
+                    visible_ids = [p["id"] for p in listeners]
+                    requested = params.get("persona", [None])[0]
+                    persona = requested if requested in visible_ids else next(iter(visible_ids), None)
+                    profile = persona_profile(db, browser, persona or None) if listeners else {}
+                    profile = profile or {}
                 if "language" not in params:
                     language = profile.get("language","en")
                 if "region" not in params:
@@ -636,7 +760,7 @@ class Picker(BaseHTTPRequestHandler):
                     pending["depth"] = params.get("depth",["standard"])[0]
                     pending["weights"] = {t:max(-2,min(2,int(params.get("weight_"+t,["0"])[0]))) for t in TOPIC_LABELS}
                 topics = params.get("topic",[] if "language" in params else profile.get("topics",[]))
-                return self.reply(200,picker_page(options,region,language,topics,pending),"text/html")
+                return self.reply(200,picker_page(options,region,language,topics,pending,listeners,persona),"text/html")
             options = category_options(database_path(), region, language)
         except ValueError as error:
             return self.reply(400, str(error))
@@ -704,7 +828,7 @@ class Picker(BaseHTTPRequestHandler):
         except (sqlite3.Error, OSError, ValueError) as error:
             return self.catalogue_unavailable(error)
         try:
-            profile = (DIRECTORY / "UserInfo.md").read_text(encoding="utf-8")
+            profile = selection if providers.cloud_only() else (DIRECTORY / "UserInfo.md").read_text(encoding="utf-8")
             briefing = compose_draft(draft, profile)
             with BRIEFING_FILES:
                 edition = save_briefing(DIRECTORY, draft, briefing)
@@ -724,16 +848,16 @@ class Picker(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     import argparse
-    from md_to_speech import ENV_FILE, load_dotenv
-    load_dotenv(ENV_FILE)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port",type=int,default=0,help="Local listening port; default chooses an available port")
     parser.add_argument("--cloud-only",action="store_true",help="Use the isolated cloud-only demo")
     args=parser.parse_args()
-    if args.cloud_only or providers.cloud_only():
-        from voxnews.demo import configure, listener_directory
+    if args.cloud_only:
+        from voxnews.demo import configure
         configure()
-        DIRECTORY = listener_directory()
+        DIRECTORY = DIRECTORY / "cloud-demo"
+    else:
+        providers.load_environment()
     with ThreadingHTTPServer(("127.0.0.1", args.port), Picker) as server:
         print(f"Open http://127.0.0.1:{server.server_port} in your browser.", flush=True)
         server.serve_forever()

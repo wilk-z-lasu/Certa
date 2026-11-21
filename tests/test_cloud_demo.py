@@ -1,3 +1,4 @@
+from contextlib import closing
 from datetime import date
 import os
 import json
@@ -16,6 +17,7 @@ from voxnews.category_review import CategoryReview
 from voxnews.claim_models import ClaimModels
 from voxnews.luna import RequestsPaused, send_request
 from voxnews.daily import prepare
+from voxnews import demo
 from voxnews.event_embeddings import E5Encoder
 from voxnews.trust_briefing import spoken_figure
 
@@ -29,9 +31,57 @@ def cloud_event():
 
 class CloudDemoTests(unittest.TestCase):
     def setUp(self):
-        environment = patch.dict(os.environ, {"VOXNEWS_PROVIDER":"openai", "VOXNEWS_CLOUD_ONLY":"1"})
+        environment = patch.dict(os.environ, {"VOXNEWS_PROVIDER": "openai", "VOXNEWS_CLOUD_ONLY": "1",
+                                              "VOXNEWS_API_REQUESTS_PAUSED": "0"})
         environment.start()
         self.addCleanup(environment.stop)
+
+    def test_normal_and_pitch_launches_read_separate_settings(self):
+        with TemporaryDirectory() as temp, patch.object(providers, "ROOT", Path(temp)):
+            root = Path(temp)
+            (root / ".env").write_text("VOXNEWS_CLOUD_ONLY=1\nVOXNEWS_PROVIDER=ollama\n"
+                                       "VOXNEWS_API_REQUESTS_PAUSED=1\nELEVENLABS_API_KEY=app-speech\n")
+            (root / ".env.local").write_text("VOXNEWS_REVIEW_MODEL=app-review\n")
+            (root / ".env.demo").write_text("OPENAI_API_KEY=pitch-test\nELEVENLABS_VOICE_ID=pitch-voice\n")
+            with patch.dict(os.environ, clear=True):
+                providers.load_environment()
+                self.assertFalse(providers.cloud_only())
+                self.assertTrue(providers.local())
+                self.assertFalse(providers.requests_paused())
+                self.assertIsNone(providers.api_key())
+                self.assertIsNone(providers.setting("ELEVENLABS_VOICE_ID"))
+            with patch.dict(os.environ, clear=True):
+                demo.configure(root / "pitch")
+                self.assertTrue(providers.cloud_only())
+                self.assertFalse(providers.local())
+                self.assertTrue(providers.requests_paused())
+                self.assertEqual(providers.api_key(), "pitch-test")
+                self.assertEqual(providers.setting("ELEVENLABS_VOICE_ID"), "pitch-voice")
+                self.assertIsNone(providers.setting("ELEVENLABS_API_KEY"))
+                self.assertIsNone(providers.setting("VOXNEWS_REVIEW_MODEL"))
+
+    def test_prepared_cloud_catalogue_is_browsable_without_a_key(self):
+        with TemporaryDirectory() as temp, patch.object(providers, "ROOT", Path(temp)), patch.dict(os.environ, clear=True):
+            root = demo.configure(temp)
+            self.assertFalse(demo.status()["ready"])
+            metadata = {"processing": cloud_event()["processing"], "report": {"draft_uses": {"approved_wording": 1}}}
+            with closing(sqlite3.connect(root / "event-overviews.sqlite3")) as db, db:
+                db.execute("CREATE TABLE build_info(id INTEGER, metadata TEXT)")
+                db.execute("INSERT INTO build_info VALUES (1, ?)", (json.dumps(metadata),))
+            status = demo.status()
+            self.assertTrue(status["ready"])
+            self.assertFalse(status["key_configured"])
+            self.assertTrue(status["api_requests_paused"])
+
+    def test_paused_hosted_writer_still_serves_the_normal_app(self):
+        claim = {"claim_id": "c", "text": "A checked statement.", "sources": []}
+        draft = {"events": [{**cloud_event(), "claims": [claim]}], "selection": {"language": "en"}}
+        with patch.dict(os.environ, {"VOXNEWS_CLOUD_ONLY": "0", "VOXNEWS_API_REQUESTS_PAUSED": "1",
+                                     "OPENAI_API_KEY": "app-test"}), patch("generate_script.request_script") as writer:
+            briefing = compose_draft(draft, {})
+            self.assertEqual(briefing["provider"], "offline")
+            self.assertEqual(briefing["segments"][0]["text"], claim["text"])
+            writer.assert_not_called()
 
     def test_local_inference_and_local_embeddings_are_disabled(self):
         with self.assertRaisesRegex(ValueError, "disabled"):
@@ -109,7 +159,7 @@ class CloudDemoTests(unittest.TestCase):
             encoder=CloudEncoder(path, transport=lambda _: {"data":[{"index":4,"embedding":[1.]*384}],"usage":{"prompt_tokens":1}})
             with self.assertRaisesRegex(ValueError, "indexes"):
                 encoder([SimpleNamespace(headline="Story",excerpt="Context")])
-            with sqlite3.connect(path) as db:
+            with closing(sqlite3.connect(path)) as db:
                 self.assertEqual(db.execute("SELECT count(*) FROM embedding").fetchone()[0],0)
 
     def test_cloud_classifier_reserves_its_small_budget_for_json(self):

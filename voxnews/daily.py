@@ -3,23 +3,25 @@
 import argparse
 from contextlib import closing
 from datetime import date, datetime, time, timedelta, timezone
+from hashlib import sha256
 import json
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
 from time import perf_counter
 
-from md_to_speech import load_dotenv
 from . import providers
 from .claim_models import ClaimModels
 from .category_review import CategoryReview
 from .cloud_embeddings import CloudEncoder
 from .event_embeddings import E5Encoder
 from .group_events import run as group_events
+from .group_events import offline_events
 from .luna import LunaJudge, ModelError, canonical_json
 from .overview import build
 from .source_store import export_import, import_feeds
 from .verify import verify, write_atomic
+from .usage import preparation_attempt
 
 
 def prepare(
@@ -31,11 +33,30 @@ def prepare(
         if offline:
             raise ValueError("Rules-only preparation is disabled in the cloud-only demo.")
         if not providers.api_key():
-            raise ValueError("Configure OPENAI_API_KEY in .env before preparing the cloud-only demo.")
+            raise ValueError("Configure OPENAI_API_KEY in .env.demo before preparing the cloud-only demo.")
     if not 1 <= lookback <= 366:
         raise ValueError("lookback must be between 1 and 366 days")
     if model_events is not None and model_events < 1:
         raise ValueError("model-events must be positive in model mode; use --offline for rules only")
+    run_dir = out / "days" / day.isoformat()
+    mode = "offline" if offline else ("ollama" if providers.local() else "openai")
+    with preparation_attempt(run_dir, mode, lookback) as attempt:
+        report = _prepare(directory, out, day, lookback, offline, embedding_dir, model_events, previous, started)
+        report["attempt_id"] = attempt
+        latest = run_dir / "report.json"
+        archive = run_dir / "attempts"
+        if latest.is_file():
+            old = latest.read_bytes()
+            # Migrate the last report from older checkouts before publishing the new result.
+            if "attempt_id" not in json.loads(old):
+                write_atomic(archive / ("legacy-" + sha256(old).hexdigest() + ".json"), old.decode("utf-8"))
+        serialized = canonical_json(report)
+        write_atomic(archive / (attempt + ".json"), serialized)
+        write_atomic(latest, serialized)
+        return report
+
+
+def _prepare(directory, out, day, lookback, offline, embedding_dir, model_events, previous, started):
     store = out / "sources.sqlite3"
     out.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(out / "claim-cache.sqlite3", timeout=60)) as classification_db:
@@ -59,9 +80,10 @@ def prepare(
         closing(sqlite3.connect(out / "claim-cache.sqlite3", timeout=60)) as db,
     ):
         stage = Path(tmp)
-        events, models, grouping = None, None, None
-        if not offline:
-            events = stage / "events.jsonl"
+        events, models = stage / "events.jsonl", None
+        if offline:
+            grouping = offline_events(feeds, categories, events, start=start, before=cutoff, previous=previous)
+        else:
             encoder = (CloudEncoder(out / "embedding-cache.sqlite3") if providers.cloud_only()
                        else E5Encoder(embedding_dir or out / "e5-small"))
             grouping = group_events(
@@ -90,13 +112,13 @@ def prepare(
             model_overviews=not offline,
             isolate_failures=not offline,
             processing=processing,
+            editorial_rules_only=offline,
         )
         verified = stage / "verification.json"
         snapshot["processing"] = processing
         write_atomic(verified, canonical_json(snapshot))
         publication = build(verified, feeds, categories, out / "event-overviews.sqlite3")
-        if events:
-            events.replace(run_dir / "events.jsonl")
+        events.replace(run_dir / "events.jsonl")
         verified.replace(run_dir / "verification.json")
         report = {
             "date": day.isoformat(),
@@ -111,21 +133,20 @@ def prepare(
             "verification": snapshot["summary"],
             "publication": publication,
         }
-        write_atomic(run_dir / "report.json", canonical_json(report))
         return report
 
 
 def main():
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    providers.load_environment()
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--date", type=date.fromisoformat, required=True)
     p.add_argument("--lookback-days", type=int, default=7)
     p.add_argument("--input-dir", type=Path, default=Path("liquid-briefing-data"))
-    p.add_argument("--output-dir", type=Path, default=Path("output/cloud-demo" if providers.cloud_only() else "output"))
+    p.add_argument("--output-dir", type=Path, default=Path("output"))
     p.add_argument("--embedding-dir", type=Path)
     p.add_argument("--model-events", type=int)
     p.add_argument("--previous", type=Path, help="Earlier grouped events for stable IDs")
-    p.add_argument("--offline", action="store_true", help="Use exact-copy grouping and official-figure rules")
+    p.add_argument("--offline", action="store_true", help="Use local occurrence grouping and source-evidence rules")
     args = p.parse_args()
     try:
         print(

@@ -1,23 +1,33 @@
 # VoxNews
 
-## Run the cloud-only demo
+## Run the local pitch
 
-The current handoff preserves credits with paid requests paused. See [HANDOFF.md](HANDOFF.md) for cached results, deferred work and restart commands. Set `VOXNEWS_API_REQUESTS_PAUSED=0` only when a funded key is available; the example environment defaults to paused.
+On this Windows pitch laptop, double-click [Start-VoxNews.cmd](Start-VoxNews.cmd), then open [VoxNews](http://127.0.0.1:50488/). It finds the installed Python runtime, prepares the catalogue on first use, and starts the app with paid requests paused. To launch from PowerShell manually, run the following from the project directory.
 
-Save `OPENAI_API_KEY=your_key` in the ignored `.env` file. The name uses underscores. Keys stay on the backend. These commands use a separate catalogue and listener history.
-
-```sh
-python3 -m voxnews.demo --date 2026-11-19 --model-events 40
-python3 app.py --cloud-only --port 50488
+```powershell
+$env:VOXNEWS_PROVIDER = 'openai'
+$env:VOXNEWS_API_REQUESTS_PAUSED = '1'
+$env:VOXNEWS_NARRATION = 'offline'
+python -m voxnews.daily --offline --date 2026-11-19
+python app.py --port 50488
 ```
 
-The demo uses [OpenAI embeddings](https://developers.openai.com/api/docs/models/text-embedding-3-small), [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) for category review, grouping and extraction, and [GPT-6.2 Astra](https://developers.openai.com/api/docs/models/gpt-6.2-astra) for evidence review, broad event overviews, translation review and daily composition. Role model IDs remain configurable. It makes no Ollama or local E5 inference calls. A missing key or failed cloud request cannot trigger a local or offline fallback. Cloud usage is billable and recorded by stage, including embeddings.
+Choose Maya, Ellis, Noor or Jonas, or click **Add user** to enter a wildcard. Set the listener's name, language, coverage area, topics, target minutes, level of detail and optional topic weights. Click **Create listener**, then **Get briefing**. To remove a listener from this browser’s chooser, select the name and click **Remove persona**, then **Remove**. Saved editions remain archived. **Generate audio** opens the player and timestamped sentences. **Claim evidence** opens the supporting passage and source links for that sentence. **Daily check-in** adjusts later editions.
 
-Preparation writes to `output/cloud-demo/`. Listener deliveries use `user_data/cloud-demo/`. Existing profile settings are carried over, while earlier generated briefings, feedback and local-model catalogues stay in their original archive. Eligible event records must carry cloud provenance for embeddings, grouping and the event-checking models. The writer also checks provenance, and saved editions from other modes cannot be replayed as cloud results. `/api/runtime` reports the active mode and preparation status without exposing credentials. `VOXNEWS_CLOUD_ONLY=1` in `.env` makes a normal app launch select this demo too.
+The pitch laptop speaks English with Microsoft Zira and German and Dutch with the project-local eSpeak NG. All three languages were tested by generating fresh audio through the app. On another machine, install FFmpeg with ffprobe and a voice for each desired language. [Audio audit and setup](AUDIO_AUDIT.md)
 
-The selected date is the reporting cutoff. With the default seven-day window, a November 19 briefing can include an article published on November 16 that recaps a November 5 decision. October inflation figures describe the measurement period. New transcripts say “Reporting published on” to distinguish the article date, and label headline CPI separately from core CPI excluding energy, food, alcohol and tobacco. Year-on-year and month-on-month rates remain separate. Use `--lookback-days 1` when preparing a catalogue restricted to articles published on the selected UTC day. Older saved editions retain their original rendering.
+For prepared playback, open [VoxNews.html](output/pitch/VoxNews.html) as a standalone file. It presents saved editions, audio, transcripts and evidence without a server. Use the app for the live wildcard. The [PowerPoint deck](pitch/Certa%20Pitch.pptx) explains the product and economics, and the [cost report](pitch/cost-report.json) separates full-feed preparation from listener delivery. These artifacts can include licensed material and must remain in the organizers' permitted environment.
 
-The 40-event checking limit is explicit and can be increased. A cloud build is required before the app serves this demo. While preparation is incomplete it displays a status page and excludes the earlier local results. Speech generation remains an explicit action and ElevenLabs verification is deferred.
+## Optional live cloud mode
+
+Cloud preparation and serving use a separate Git-ignored `.env.demo`, data under `output/cloud-demo/`, listener history under `user_data/cloud-demo/`, and port 50500. On a machine authorized to incur charges, copy `.env.demo.example` to `.env.demo`, configure a funded `OPENAI_API_KEY`, and set `VOXNEWS_API_REQUESTS_PAUSED=0`. ElevenLabs audio also requires an ElevenLabs key and voice ID. Credentials already exported in the launch shell take precedence. Use a separate shell from the local pitch and restart the server after configuration changes.
+
+```powershell
+python -m voxnews.demo --date 2026-11-19 --model-events 40
+python app.py --cloud-only --port 50500
+```
+
+Cloud preparation uses hosted embeddings, GPT-6 Luna for grouping and extraction, and GPT-6.2 Astra for review and composition by default. Strong occurrence signatures handle straightforward matches ahead of model review. Model IDs are independently configurable, and usage is recorded by stage. The isolated server serves only eligible cloud revisions and displays preparation status at `/api/runtime`. Restore an authorized team cache to reuse an earlier run. The 40-event budget bounds review, and unprocessed events remain outside cloud delivery. The prepared local pitch was verified without paid calls. The updated grouping logic has no new hosted end-to-end run.
 
 ## Run the daily backend
 
@@ -42,7 +52,7 @@ curl --fail --location --output output/e5-small/model.onnx https://huggingface.c
 
 Open the printed address. Choose November 17, economy and central banks, English, and UK coverage. Save the preferences and open the briefing. Select **Claim evidence** beside a sentence to inspect its event revision, article and official source. In **Daily check-in**, ask for a shorter briefing and more currency news. Return to **Change interests** and select November 18. Previously delivered claims stay in the first edition. The profile history and immutable draft identify which settings shaped each day. Another browser profile or private window gives a second listener their own history. Try Dutch narration with euro-area coverage, or enter the wildcard listener's settings directly. Audio generation requires an explicit click.
 
-The offline preparation uses exact-copy grouping and verified official figures. Without a writer key or local provider, composition uses ordered approved sentences. A model run also performs multilingual embedding, small-model grouping, claim extraction, larger-model review and event overview creation. Install `requirements-events.txt` and obtain the pinned E5 files as described under **Group articles into events**. For local inference, start Ollama with the models listed below, then use these commands in the same shell.
+Offline preparation joins exact and near copies, strongly matched Invezz variants and narrowly identified occurrences. It approves dated official figures and attributed developments from supported article clauses. With paid requests paused and the OpenAI provider selected, composition orders approved sentences locally. A model run also performs multilingual embedding, small-model grouping, claim extraction, larger-model review and event overview creation. Install `requirements-events.txt` and obtain the pinned E5 files as described under **Group articles into events**. For local inference, start Ollama with the models listed below, then use these commands in the same shell.
 
 ```sh
 export VOXNEWS_PROVIDER=ollama
@@ -67,7 +77,7 @@ Source-supported forecasts, allegations and analysis can supply context when the
 | Evidence review and overview | `VOXNEWS_REVIEW_MODEL` | qwen3.5:4b-mlx | gpt-6.2-astra |
 | Daily composition | `VOXNEWS_COMPOSITION_MODEL` | qwen3.5:4b-mlx | gpt-6.2-astra |
 
-The local models must be installed under the configured names. For hosted use, select model IDs available to your account. The writer chooses and orders cited claims. The renderer supplies the reviewed wording, date, section transitions and disclosure in the listener's language. Missing coverage can produce a short edition or no edition. An audio failure leaves the text available. Segment generation uses ElevenLabs and `ffprobe` for measured durations.
+The local models must be installed under the configured names. For hosted use, select model IDs available to your account. The writer chooses and orders cited claims. The renderer supplies the reviewed wording, date, section transitions and disclosure in the listener's language. Missing coverage can produce a short edition or no edition. An audio failure leaves the text available. Offline narration uses an installed Windows voice or eSpeak NG, with FFmpeg for audio conversion and ffprobe for measured durations. ElevenLabs is optional in normal mode and required for cloud narration.
 
 ### Records, inspection and cleanup
 
@@ -82,7 +92,7 @@ python3 -m voxnews.evaluate grouping output/days/2026-11-18/events.jsonl
 python3 -m voxnews.evaluate transcript --edition EDITION_ID
 ```
 
-Generate the measured preparation and listener cost report with the following command. Add `--briefing` for each saved example or final briefing JSON. For hosted projections, supply `--prices` with actual per-million input, cached-input and output prices keyed by model ID, plus `--rates-date YYYY-MM-DD`. Unpriced hosted usage stays unknown. The two projections scale new article volume and listener count separately. Local inference has zero model API fees. Hardware, electricity and subscription costs need separate accounting. Speech measurements and listening review are pending the deferred ElevenLabs verification.
+Generate the measured preparation and listener cost report with the following command. Add `--briefing` for each saved example or final briefing JSON. For hosted projections, supply `--prices` with actual per-million input, cached-input and output prices keyed by model ID, plus `--rates-date YYYY-MM-DD`. Unpriced hosted usage stays unknown. The two projections scale new article volume and listener count separately. Local inference has zero model API fees. Hardware, electricity and subscription costs need separate accounting. The local Windows speech measurements are in the audio audit. Live ElevenLabs verification remains pending.
 
 ```sh
 python3 -m voxnews.cost output/days/2026-11-19/report.json
@@ -90,13 +100,29 @@ python3 -m voxnews.cost output/days/2026-11-19/report.json
 
 The proposed initial payer is a publisher offering a personalized morning briefing to subscribers. Editors import the licensed feeds, inspect held events and source disagreements, and publish the day's shared catalogue. Listener setup and feedback then shape drafts from those saved event revisions. A correction creates a new revision, while earlier editions retain their original evidence. The validated introduction discloses synthetic narration in the listening language. This publisher proposition is a product hypothesis that still needs customer validation.
 
-Use the grouping command after a model run. Supply `--reference PATH` to evaluate a separate reference file in the format under `examples/`. The bundled reference is a targeted manual sample. For end-of-event deletion, remove the original licensed feeds, all generated output directories including SQLite databases, cached model decisions and frozen imports, local listener data and media, exported bundles, and team copies or backups. Retain licensed material only within the authorized team and event period.
+Use the grouping command on any compatible event output. Supply `--reference PATH` to evaluate a separate reference file in the format under `examples/`. The bundled reference is a targeted manual sample. For end-of-event deletion, remove the original licensed feeds, all generated output directories including SQLite databases, cached model decisions and frozen imports, local listener data and media, exported bundles, and team copies or backups. Retain licensed material only within the authorized team and event period.
 
-## Run the hackathon demo offline
+## Rebuild the recorded pitch and cost report
 
-Copy [the demo ZIP](output/voxnews-offline-demo.zip) to the presentation computer, extract the entire archive, and open **index.html** in a browser. The two recordings, transcripts, per-sentence evidence, searchable event catalogue and claim source logs work from disk. Only links out to publishers and official releases require internet access. The presentation computer needs no Python, Ollama, model weights, GPU or API key.
+The pitch on this laptop uses the recordings in `output/audio-audit-final`. To rebuild it, run the commands below. To export a new set, run the [HTTP audio audit](AUDIO_AUDIT.md) against the local app and pass the audit directory and the app's listener data directory in place of the two paths shown here.
 
-The bundle is a fixed snapshot for playback and evidence inspection. The headlines recording has two claims in about 17 seconds. The rates recording has five in about 37 seconds. Live editing and listener-specific research selection use the Python commands below.
+```powershell
+$audit = 'output/audio-audit-final'
+$tech = (Get-Content "$audit/technology/briefing.json" -Raw | ConvertFrom-Json).edition
+$macro = (Get-Content "$audit/macro/briefing.json" -Raw | ConvertFrom-Json).edition
+$wild = (Get-Content "$audit/wildcard/briefing.json" -Raw | ConvertFrom-Json).edition
+python -m voxnews.pitch_replay --listeners "$audit/app-data" --edition "Tech & economy" $tech --edition "Macro morning" $macro --edition "Crypto wildcard" $wild --output output/pitch/VoxNews.html
+```
+
+Use a separate full-feed run so the cost report includes all 1,740 articles without widening the live pitch window. Include one `--briefing` and `--audio-manifest` per measured delivery when regenerating the report from the audit output.
+
+```powershell
+$audit = 'output/audio-audit-final'
+python -m voxnews.daily --offline --date 2026-11-19 --lookback-days 115 --output-dir output/full-local-benchmark
+python -m voxnews.cost output/full-local-benchmark/days/2026-11-19/report.json --briefing "$audit/technology/briefing.json" --briefing "$audit/macro/briefing.json" --audio-manifest "$audit/technology/manifest.json" --audio-manifest "$audit/macro/manifest.json" --machine-usd-per-hour 1
+```
+
+The measured cold run prepared 1,740 articles in 39.45 seconds, producing 1,540 events and 15 approved claims, with zero provider fees. At an assumed $1 per machine-hour, preparation plus two listener deliveries cost $0.0155. Linear projections were $0.1141 for ten times the articles and $0.0559 for ten times the listeners. Each preparation attempt retains its report in `days/YYYY-MM-DD/attempts/` alongside a cumulative usage ledger. For hosted writing history, pass `--writer-ledger user_data/usage/days/YYYY-MM-DD/usage.sqlite3`, or use the isolated cloud listener directory. All six positive and five negative manual grouping pairs matched. The organizer's answer key and a separate holdout evaluation remain unavailable. [Grouping evaluation](EVENT_GROUPING_EVALUATION.md)
 
 ## Categorize the source feeds
 
@@ -234,7 +260,7 @@ python -m voxnews.overview export-demo --db output/offline-demo/event-overviews.
 Building and reading overviews from the saved handoffs makes zero model calls. The separate `synthesize` command is the only overview operation that contacts Ollama. It requires an explicitly selected installed model on the enrichment machine. Generating new upstream event groups or live model reviews has the separate dependencies documented above.
 ## Personalized news audio
 
-Set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` in the project’s `.env`, then run `python3 generate_news_audio.py` to narrate `user_data/script.md`. The app uses the same renderer in `md_to_speech.py` when it displays a newly generated script. Listener preferences shape the script, and ElevenLabs narrates it with the configured voice.
+Set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` in the project’s `.env`, then run `python3 generate_news_audio.py` to narrate `user_data/script.md`. This is the legacy single-script renderer. The daily app uses segmented narration with the provider selected by its runtime settings.
 
 Listen in the app or open `user_data/news.wav`. The companion `news.manifest.json` records the script hashes, voice and model, request IDs, and measured duration. The renderer reuses the saved WAV when the script, voice, and model match.
 

@@ -8,15 +8,16 @@ from secrets import token_hex
 from threading import Lock
 from subprocess import SubprocessError
 import sqlite3
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
-from build_preai import database_path, NoCoverage
+from build_preai import database_path, NoCoverage, preferences
 from generate_script import ScriptError
-from .editions import dates
+from .editions import dates, picker_options
 from .delivery import compose_day
-from .listeners import Conflict, check_in, current, revise, storage, unpack
+from .listeners import Conflict, add_person, check_in, people, persona_profile, remove_person, revise, scope, storage, unpack
+from .topic_rules import TOPICS
 from .official_releases import digest
-from .overview_reader import connect, get_event, log_html
+from .overview_reader import connect, get_event, log_html, Passages
 from .verify import write_atomic
 
 AUDIO_LOCK = Lock()
@@ -43,13 +44,18 @@ def available_dates():
 
 
 def respond(handler, directory, *, post=False):
-    path = urlsplit(handler.path).path
-    listener = identity(handler)
+    url = urlsplit(handler.path)
+    path = url.path
+    browser = identity(handler)
+    params = parse_qs(url.query, keep_blank_values=True)
+    persona = params.get("persona", [None])[0]
     try:
         if path.startswith("/evidence/") and not post:
             _, _, eid, revision = path.split("/")
             with closing(connect(database_path())) as db:
-                return handler.reply(200, log_html(get_event(db, eid, revision)), "text/html")
+                claim = params.get("claim", [None])[0]
+                return handler.reply(200, log_html(get_event(db, eid, revision), claim=claim,
+                                                   passages=Passages(db) if claim else None), "text/html")
         data = {}
         if post:
             if handler.headers.get_content_type() != "application/json":
@@ -60,7 +66,27 @@ def respond(handler, directory, *, post=False):
             data = json.loads(handler.rfile.read(length))
             if not isinstance(data, dict):
                 raise ValueError("Expected a JSON object.")
+        if not post and path == "/api/briefing-options":
+            region = params.get("region", [None])[0] or None
+            language = params.get("language", ["en"])[0]
+            preferences(list(TOPICS), region, language)
+            result = picker_options(database_path(), params.get("date", [None])[0], region, language)
+            return handler.reply(200, json.dumps(result), "application/json")
         with storage(directory) as db:
+            if path == "/api/people":
+                if post:
+                    db.execute("BEGIN IMMEDIATE")
+                    result = add_person(db, browser, data.get("name"), data.get("settings"))
+                    db.commit()
+                else:
+                    result = people(db, browser)
+                return handler.reply(200, json.dumps(result), "application/json")
+            if post and path == "/api/people/remove":
+                db.execute("BEGIN IMMEDIATE")
+                remove_person(db, browser, data.get("id"))
+                db.commit()
+                return handler.reply(200, json.dumps({"removed": True}), "application/json")
+            listener = scope(db, browser, persona)
             if post and path == "/api/narration":
                 from .narration import render
 
@@ -76,8 +102,14 @@ def respond(handler, directory, *, post=False):
                             directory / "listeners" / listener,
                             json.loads(row["draft"]),
                             json.loads(row["briefing"]),
+                            refresh=data.get("refresh") is True,
                         )
-                except (ValueError, RuntimeError, SubprocessError, OSError) as error:
+                    if persona is not None:
+                        for segment in result["segments"]:
+                            segment["url"] += "?" + urlencode({"persona": persona})
+                except ValueError as error:
+                    return handler.reply(503, str(error))
+                except (RuntimeError, SubprocessError, OSError) as error:
                     handler.log_error("Narration: %s", error)
                     return handler.reply(
                         503, "Audio generation failed. Your verified transcript is available."
@@ -90,7 +122,7 @@ def respond(handler, directory, *, post=False):
                 root = directory / "listeners" / listener
                 manifest = root / edition / "audio.json"
                 if not manifest.exists() or name not in {
-                    s["file"] for s in json.loads(manifest.read_text())["segments"]
+                    s["file"] for s in json.loads(manifest.read_text(encoding="utf-8"))["segments"]
                 }:
                     return handler.send_error(404)
                 body = (root / "audio" / name).read_bytes()
@@ -105,7 +137,7 @@ def respond(handler, directory, *, post=False):
                     "SELECT * FROM profile WHERE listener=? ORDER BY version DESC", (listener,)
                 )
                 result = {
-                    "profile": current(db, listener),
+                    "profile": persona_profile(db, browser, persona),
                     "history": [unpack(r) for r in history],
                     "dates": available_dates(),
                     "delivered": [
@@ -122,7 +154,13 @@ def respond(handler, directory, *, post=False):
                 day = data.get("date")
                 if not isinstance(day, str):
                     raise ValueError("Choose a published briefing date.")
-                result = compose_day(directory, listener, day, data.get("version"))
+                db.execute("BEGIN IMMEDIATE")
+                profile = persona_profile(db, browser, persona)
+                version = data.get("version")
+                if profile and profile["version"] == 0 and version in (None, 0):
+                    version = revise(db, listener, profile, "Preset preferences", 0)["version"]
+                db.commit()
+                result = compose_day(directory, listener, day, version)
                 target = directory / "listeners" / listener / result["edition"]
                 write_atomic(target / "script.md", result["script"])
             elif post and path in {"/api/feedback", "/api/feedback/undo"}:

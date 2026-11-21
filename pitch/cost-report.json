@@ -1,0 +1,123 @@
+{
+  "date": "2026-11-19",
+  "mode": "offline",
+  "rates_as_of": null,
+  "imported_stories": 1740,
+  "window_articles": 1740,
+  "events": 1540,
+  "model_event_budget": 0,
+  "model_events_reviewed": 0,
+  "event_failures": 0,
+  "preparation_seconds": 39.45,
+  "shared": {
+    "classification": {
+      "model": null,
+      "calls": 0,
+      "unmetered_calls": 0,
+      "cache_hits": 0,
+      "retries": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "seconds": null,
+      "estimated_provider_usd": 0
+    },
+    "grouping": {
+      "model": "occurrence-rules",
+      "calls": 0,
+      "unmetered_calls": 0,
+      "cache_hits": 0,
+      "retries": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "seconds": null,
+      "estimated_provider_usd": 0
+    }
+  },
+  "writing": [
+    {
+      "model": null,
+      "calls": 0,
+      "unmetered_calls": 0,
+      "cache_hits": 0,
+      "retries": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "seconds": 0.0,
+      "estimated_provider_usd": 0
+    },
+    {
+      "model": null,
+      "calls": 0,
+      "unmetered_calls": 0,
+      "cache_hits": 0,
+      "retries": 0,
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "seconds": 0.0,
+      "estimated_provider_usd": 0
+    }
+  ],
+  "speech": [
+    {
+      "duration_seconds": 154.61818699999998,
+      "providers": [
+        "windows-speech"
+      ],
+      "generation_seconds": 11.067068800017296,
+      "cache_hits": 6,
+      "new_segments": 22,
+      "new_text_characters": 1735,
+      "provider_character_cost": 0,
+      "estimated_provider_usd": 0
+    },
+    {
+      "duration_seconds": 54.119094,
+      "providers": [
+        "windows-speech"
+      ],
+      "generation_seconds": 4.405090000007476,
+      "cache_hits": 1,
+      "new_segments": 9,
+      "new_text_characters": 587,
+      "provider_character_cost": 0,
+      "estimated_provider_usd": 0
+    }
+  ],
+  "shared_provider_usd": 0,
+  "listener_provider_usd": 0,
+  "total_provider_usd": 0,
+  "projection_usd": {
+    "ten_times_new_articles_same_listeners": 0,
+    "same_articles_ten_times_listeners": 0
+  },
+  "assumptions": "Same model routing, coverage, revisions per article, cache mix and listener mix. Local model API fees are zero. Provider totals exclude hardware, electricity and fixed subscriptions. Speech is included only for supplied manifests.",
+  "machine_scenario": {
+    "usd_per_hour_assumption": 1.0,
+    "shared_seconds": 39.45,
+    "listener_seconds": 16.194158800024773,
+    "shared_usd": 0.010958333333333334,
+    "listener_usd": 0.004498377444451326,
+    "total_usd": 0.01545671077778466,
+    "ten_times_new_articles_same_listeners_usd": 0.11408171077778466,
+    "same_articles_ten_times_listeners_usd": 0.0559421077778466,
+    "assumption": "Allocate serial preparation, retrieval, writing and speech time at the supplied hourly rate. The 10x scenarios assume linear wall time and unchanged routing. They are projections."
+  },
+  "cumulative_preparation": {
+    "attempts": [
+      {
+        "id": "ab5f0309087744348a7ee8609e2508cd",
+        "started": "2026-11-21T08:51:46.500432+00:00",
+        "mode": "offline",
+        "lookback_days": 115,
+        "status": "completed"
+      }
+    ],
+    "hosted_requests": [],
+    "known_since_ledger_created": true,
+    "estimated_shared_provider_usd": 0
+  }
+}

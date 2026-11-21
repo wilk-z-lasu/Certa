@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 
-from .event_candidates import conflicting_periods, fingerprint
+from .event_candidates import conflicting_periods, fingerprint, matching_signature
 from .luna import MODEL, PROMPT_VERSION
 from .topic_rules import TOPICS
 
@@ -112,8 +112,13 @@ def event_records(groups, origins, reviews, origin_reviews, articles, decisions,
                 if i == anchor:
                     grouping = {"method": "anchor"}
                 elif i == origin:
+                    same_signature = matching_signature(
+                        articles[anchor], article,
+                        round(abs((article.published - articles[anchor].published).total_seconds()) / 3600, 3),
+                    )
                     grouping = {
-                        "method": "luna", "matched_article_id": articles[anchor].id,
+                        "method": "occurrence_signature" if same_signature else "luna",
+                        "matched_article_id": articles[anchor].id,
                         **decisions[(anchor, origin)].as_record(),
                     }
                 else:
@@ -122,7 +127,7 @@ def event_records(groups, origins, reviews, origin_reviews, articles, decisions,
                     elif article.language == canonical.language:
                         method = "near_copy"
                     else:
-                        method = "invezz_translation"
+                        method = "invezz_thumbnail_translation" if model == "occurrence-rules" else "invezz_translation"
                     grouping = {"method": method, "matched_article_id": canonical.id}
                 origin_uncertain = i in origin_reviews
                 if origin_uncertain:

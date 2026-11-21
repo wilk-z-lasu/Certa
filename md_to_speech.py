@@ -22,6 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from voxnews import providers
+from voxnews.providers import load_dotenv
 
 DEFAULT_MODEL_ID = "eleven_multilingual_v2"
 DEFAULT_OUTPUT_FORMAT = "mp3_44100_128"
@@ -29,23 +31,6 @@ DEFAULT_CHUNK_SIZE = 4500
 API_BASE = "https://api.elevenlabs.io/v1/text-to-speech"
 ENV_FILE = Path(__file__).resolve().with_name(".env")
 NEWS_SAMPLE_RATE = 24000
-
-
-def load_dotenv(path: Path) -> None:
-    """Load simple KEY=VALUE entries without overriding existing environment values."""
-    if not path.is_file():
-        return
-    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
-            value = value[1:-1]
-        if key and key not in os.environ:
-            os.environ[key] = value
 
 
 def markdown_to_text(markdown: str) -> str:
@@ -172,6 +157,7 @@ def synthesize_chunk(
         headers={"xi-api-key": api_key, "Content-Type": "application/json"},
     )
     for attempt in range(retries + 1):
+        providers.require_paid_requests()
         if telemetry is not None:
             telemetry["retries"] = attempt
         try:
@@ -206,11 +192,10 @@ def synthesize_chunk(
 
 def generate_news_audio(directory: Path, expected_script: str | None = None) -> Path:
     """Render the saved briefing with the configured ElevenLabs voice."""
-    load_dotenv(ENV_FILE)
-    voice_id = os.getenv("ELEVENLABS_VOICE_ID", "").strip()
+    voice_id = providers.setting("ELEVENLABS_VOICE_ID", "").strip()
     if not voice_id or voice_id == "your_voice_id_here":
-        raise ValueError("Set ELEVENLABS_VOICE_ID in .env.")
-    model_id = os.getenv("ELEVENLABS_MODEL_ID") or DEFAULT_MODEL_ID
+        raise ValueError("Set ELEVENLABS_VOICE_ID for this server.")
+    model_id = providers.setting("ELEVENLABS_MODEL_ID") or DEFAULT_MODEL_ID
 
     source = directory / "script.md"
     raw = source.read_bytes()
@@ -241,9 +226,9 @@ def generate_news_audio(directory: Path, expected_script: str | None = None) -> 
             if saved.get("audio_sha256") == hashlib.sha256(output.read_bytes()).hexdigest():
                 return output
 
-    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    api_key = providers.setting("ELEVENLABS_API_KEY", "").strip()
     if not api_key or api_key == "your_api_key_here":
-        raise ValueError("Set ELEVENLABS_API_KEY in .env.")
+        raise ValueError("Set ELEVENLABS_API_KEY for this server.")
     chunks = split_long_text(narration, DEFAULT_CHUNK_SIZE)
     request_ids = []
     with tempfile.TemporaryDirectory(dir=directory) as temp:

@@ -1,5 +1,22 @@
 # Event grouping evaluation
 
+## Rules-only full-feed run
+
+```powershell
+python -m voxnews.daily --offline --date 2026-11-19 --lookback-days 366 --output-dir output/grouping-evaluation
+python -m voxnews.evaluate grouping output/grouping-evaluation/days/2026-11-19/events.jsonl
+```
+
+The full window contains 1,740 unique article memberships, 1,548 reporting origins, and 1,540 events (100 grouped, 1,440 singletons). The 366-day lookback includes older Zacks rows. It is an evaluation window. The briefing uses its configured editorial window. The rules-only run made zero model calls.
+
+All six positives and all five negatives in the bundled manual development reference matched their expected final memberships. In particular, ActionForex and Invezz matched on the country, producer price indicator, October reporting period, and same-day publication. The Outlook match used explicit service-outage statements linking the same company and product within hours. The two cross-month US CPI articles, the Canadian and UK CPI articles, and the two reports of distinct Intel corporate developments stayed separate.
+
+The hosted path uses the same strong occurrence signatures ahead of model review and includes the derived descriptors when sending other pairs to the grouping model. No hosted rerun was made for this evaluation, and the official answer key is unavailable. The manual pairs guided development and cannot establish holdout performance, full-corpus precision or recall, or how the model handles the remaining pairs.
+
+The local run collapsed 188 German and Dutch publisher variants based on a shared non-placeholder thumbnail URL unique in each corresponding feed within the window, matching byline, close publication time and compatible reporting periods. This is a conservative publication metadata heuristic. It does not independently verify origin or translation fidelity. Reused or inconclusive signals leave articles separate. The model route still uses its own embedding-backed translation match.
+
+The full rules-only catalogue approved 15 claims. Five matched dated official values and 10 were article-attributed developments from bounded reporting clauses. The latter include service outages, a shareholder allegation, an IPO pricing report, company earnings, a factory plan attributed to Reuters, and a traded Bitcoin price distinct from a forward target in the same lead. The catalogue records source URLs and clause offsets and offers fixed English, German and Dutch wording. The admitted formats provide selective coverage and do not attempt general article verification.
+
 ## Local-model final memberships, November 20
 
 The completed full-feed run also preserves every article ID exactly once. It produces 1,464 events, consisting of 1,087 singletons, 302 cases held for grouping review and 75 grouped events. All six positive and five negative manual reference pairs still match their labels in this full output. The final replay reuses 775 cached decisions. The score is saved under `output/full-model-run/grouping-score.json`. These development references provide no full-corpus or holdout accuracy estimate.

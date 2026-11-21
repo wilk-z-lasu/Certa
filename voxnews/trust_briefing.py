@@ -52,8 +52,10 @@ def spoken(claim, lang, *, version=1):
     if not claim["approved"] or claim["article_state"] != "supported" or not claim["support"]:
         raise ValueError("segment lacks approved article evidence")
     if claim["kind"] != "official_figure":
+        verified = (claim.get("review", {}).get("decision") == "supported"
+                    or claim.get("method") == "editorial_rules")
         if (lang != "en" or not qualified_wording(claim["kind"], claim["wording"])
-                or claim.get("review", {}).get("decision") != "supported"
+                or not verified
                 or ADVICE.search(claim["wording"])):
             raise ValueError("no approved wording for this language")
         return attributed_wording(claim["kind"], claim["support"][0]["publisher"], claim["wording"], lang)

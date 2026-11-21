@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 import json
 import sqlite3
+from secrets import token_hex
 
 from build_preai import preferences
 from .luna import canonical_json
@@ -11,7 +12,21 @@ from .topic_rules import TOPICS
 
 
 DEPTHS = ("headlines", "standard", "detailed")
+PERSONAS = {
+    "technology": ("Maya", {"topics": ["technology_ai", "companies_stocks"],
+        "minutes": 3, "depth": "headlines", "weights": {"technology_ai": 2}}),
+    "macro": ("Ellis", {"topics": ["economy_central_banks", "currencies"],
+        "minutes": 8, "depth": "detailed", "weights": {"economy_central_banks": 2}}),
+    "noor": ("Noor", {"topics": ["economy_central_banks", "politics_world", "other_news"],
+        "region": "NL", "language": "nl", "minutes": 4, "depth": "standard"}),
+    "jonas": ("Jonas", {"topics": ["companies_stocks", "economy_central_banks"],
+        "region": "DE", "language": "de", "minutes": 6, "depth": "detailed", "weights": {"companies_stocks": 2}}),
+}
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS person(
+ browser TEXT, id TEXT, name TEXT NOT NULL, PRIMARY KEY(browser,id));
+CREATE TABLE IF NOT EXISTS removed_person(
+ browser TEXT, id TEXT, PRIMARY KEY(browser,id));
 CREATE TABLE IF NOT EXISTS profile(
  listener TEXT, version INTEGER, settings TEXT NOT NULL, reason TEXT NOT NULL,
  created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(listener,version));
@@ -67,6 +82,54 @@ def current(db, listener):
         "SELECT * FROM profile WHERE listener=? ORDER BY version DESC LIMIT 1", (listener,)
     ).fetchone()
     return unpack(row) if row else None
+
+
+def people(db, browser, *, include_legacy=False):
+    removed = {row[0] for row in db.execute("SELECT id FROM removed_person WHERE browser=?", (browser,))}
+    profiles = [{"id": key, "name": name} for key, (name, _) in PERSONAS.items()] + [
+        dict(row) for row in db.execute(
+            "SELECT id,name FROM person WHERE browser=? ORDER BY name COLLATE NOCASE,id", (browser,)
+        )
+    ]
+    if include_legacy and current(db, browser):
+        profiles.insert(0, {"id": "", "name": "My profile"})
+    return [p for p in profiles if p["id"] not in removed]
+
+
+def remove_person(db, browser, persona):
+    if not isinstance(persona, str) or not any(p["id"] == persona for p in people(db, browser, include_legacy=True)):
+        raise ValueError("Unknown listener profile.")
+    db.execute("INSERT INTO removed_person(browser,id) VALUES (?,?)", (browser, persona))
+
+
+def scope(db, browser, persona=None):
+    if db.execute("SELECT 1 FROM removed_person WHERE browser=? AND id=?", (browser, persona or "")).fetchone():
+        raise ValueError("Unknown listener profile.")
+    if not persona:
+        return browser
+    if persona not in PERSONAS and not db.execute(
+        "SELECT 1 FROM person WHERE browser=? AND id=?", (browser, persona)
+    ).fetchone():
+        raise ValueError("Unknown listener profile.")
+    return digest([browser, persona])
+
+
+def add_person(db, browser, name, preferences):
+    name = name.strip() if isinstance(name, str) else ""
+    if not name or len(name) > 60 or any(not c.isprintable() for c in name):
+        raise ValueError("Enter a name of 1–60 characters.")
+    persona = token_hex(16)
+    db.execute("INSERT INTO person VALUES (?,?,?)", (browser, persona, name))
+    listener = scope(db, browser, persona)
+    profile = revise(db, listener, preferences, "New listener")
+    return {"id": persona, "name": name, "profile": profile}
+
+
+def persona_profile(db, browser, persona=None):
+    profile = current(db, scope(db, browser, persona))
+    if profile is None and persona in PERSONAS:
+        return {**settings(PERSONAS[persona][1]), "version": 0}
+    return profile
 
 
 def unpack(row):

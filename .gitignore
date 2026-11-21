@@ -2,6 +2,7 @@ __pycache__/
 /output/
 .env
 .env.local
+.env.demo
 .codex-python/
 .venv/
 *.manifest.json
@@ -14,4 +15,5 @@ __pycache__/
 
 /user_data/listeners.sqlite3*
 /user_data/listeners/
+/user_data/usage/
 /user_data/cloud-demo/

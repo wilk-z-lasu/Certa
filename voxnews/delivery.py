@@ -1,5 +1,6 @@
 """Reserve a listener's composition work and publish an immutable daily text."""
 
+from contextlib import nullcontext
 from secrets import token_hex
 from time import time, perf_counter
 
@@ -8,6 +9,7 @@ from generate_script import compose_draft, validate_daily
 from .editions import personal_draft
 from .listeners import Conflict, current, delivered, previous_claims, record_delivery, storage
 from . import providers
+from .usage import writer_attempt
 
 
 def compose_day(directory, listener, day, expected_version=None):
@@ -38,8 +40,10 @@ def compose_day(directory, listener, day, expected_version=None):
         start = perf_counter()
         draft = personal_draft(database_path(), profile, day, history)
         retrieval = perf_counter() - start
-        briefing = compose_draft(draft, draft["selection"])
-        validate_daily(draft, briefing)
+        hosted = not providers.local() and providers.api_key() and not providers.requests_paused()
+        with writer_attempt(directory, draft["date"]) if hosted else nullcontext():
+            briefing = compose_draft(draft, draft["selection"])
+            validate_daily(draft, briefing)
         briefing["retrieval_seconds"] = round(retrieval, 3)
         with storage(directory) as db:
             db.execute("BEGIN IMMEDIATE")

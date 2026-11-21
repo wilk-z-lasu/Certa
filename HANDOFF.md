@@ -1,54 +1,41 @@
-# VoxNews handoff — November 21
+# VoxNews pitch handoff
 
-Cloud-only mode is implemented. Paid OpenAI requests are paused to protect the user's reported remaining $3. Resume paid work only with a funded key. The request already in flight at interruption may still have been billed. No new paid requests were initiated during cache-only finalization.
+## On the pitch laptop
 
-**Current state**
+Open [the presentation](pitch/Certa%20Pitch.pptx) and the [recorded pitch](output/pitch/VoxNews.html). The HTML embeds audio and evidence references. The prepared editions support playback, transcript comparison and claim inspection from disk. Publisher and official-release links require network access. Use the local app for the live wildcard.
 
-- The app runs at `http://127.0.0.1:50488/`. `/api/runtime` confirms `cloud_only=true` and `api_requests_paused=true`.
-- The bare key was normalized to `OPENAI_API_KEY=…` and authenticated successfully. It remains in ignored `.env` with owner-only permissions. Never commit or paste its value.
-- Demo inference uses OpenAI, including `text-embedding-3-small`, GPT-6 Luna for classification/grouping/extraction, and GPT-6.2 Astra for review/overviews/composition. Ollama, local E5, cached local overviews and offline writer fallback are blocked.
-- Cloud data is isolated in `output/cloud-demo/`; listener history is in `user_data/cloud-demo/`. User settings were carried over. Earlier local-model results remain archived separately.
-- All 1,740 source articles were imported. The seven-day November 19 window contains 811 articles and 616 event records. Cloud embeddings and grouping are complete and cached.
-- Fourteen event checks completed, publishing 27 approved statements. Twenty-six selected events are explicitly deferred by the API pause. The final snapshot has zero failed events.
-- Cache-only finalization made zero new classification, embedding, grouping or verification API calls. These zero-cost replay metrics do not represent the earlier interrupted cloud run's billing.
-- Seventy non-audio regression tests pass, along with static and whitespace checks. Tests make no paid requests.
-
-**Inflation and dates**
-
-The dataset's 3.6% is UK headline CPI. The 2.8% is core CPI excluding energy, food, alcohol and tobacco. The 0.5% is the month-on-month CPI change. All refer to October 2026. November 16/18 identify publication dates of reporting; the Bank Rate statement describes a November 5 decision.
-
-New cloud records explain headline and core CPI explicitly. New transcripts say “Reporting published on 16 November 2026.” Archived editions keep their original rendering. The default lookback is seven days. `--lookback-days 1` restricts article publication to the selected UTC day; it does not change dates of events or measurement periods described in an article.
-
-**Inspect without spending credits**
-
-```sh
-python3 tests/check_backend.py
-python3 app.py --cloud-only --port 50500
+```powershell
+$env:VOXNEWS_PROVIDER = 'openai'
+$env:VOXNEWS_API_REQUESTS_PAUSED = '1'
+$env:VOXNEWS_NARRATION = 'offline'
+python -m voxnews.daily --offline --date 2026-11-19
+python app.py --port 50488
 ```
 
-Use 50500 if the existing server occupies 50488. Browsing the catalogue and evidence works; generating a new final briefing is blocked by the credit pause.
+The Windows launcher [Start-VoxNews.cmd](Start-VoxNews.cmd) also starts this app. On the pitch laptop, English uses Windows speech and German and Dutch use project-local eSpeak NG. All three were rendered through the application with paid requests paused. FFmpeg and ffprobe are on PATH.
 
-`output/cloud-demo/backend-audit/draft-preview.md` and `draft-preview.json` contain a 21-claim draft with cloud provenance. `inflation-check.json` records the source checks. This is an approved-claim draft preview, not a composition-model result or narrated briefing. Creating it made no API requests.
+1. In the app, choose **Maya** for technology or **Ellis** for rates and inflation. **Noor** listens in Dutch and **Jonas** in German. The standalone recordings retain their original edition labels, including **Macro morning** and **Tech & economy**.
+2. Open **Show transcript** and three **Claim evidence** entries. Each entry follows a sentence to the exact source passage and immutable event revision. Official figures also link to the dated observation used for verification.
+3. Select **Add user**, enter the jury wildcard's name, and set the briefing date, language, area, topics, target minutes, detail and optional topic weights. Click **Create listener**, **Get briefing**, then **Generate audio**.
+4. Use **Daily check-in** to demonstrate feedback that shapes the next briefing. Reopen a delivered date to show that its text and citations remain fixed.
 
-The current run is saved in `output/cloud-demo/days/2026-11-19/report.json` and `verification.json`. Preserve the caches to avoid paying for completed work again.
+See the [audio audit](AUDIO_AUDIT.md), [measured cost report](pitch/cost-report.json) and [rebuild commands](README.md#rebuild-the-recorded-pitch-and-cost-report). Use the report to distinguish preparation from per-listener delivery and measured figures from the 10× projections.
 
-These generated files and caches are local and ignored by Git. A teammate on another machine must use this checkout or receive the `output/cloud-demo/` folder through the team's authorized file transfer. The folder includes licensed source material and belongs only in the hackathon team's permitted environment. Do not transfer `.env` or put generated source data in Git. Without the caches, the resume command starts a new paid build.
+## Evidence and scope
 
-**Resume when funded**
+The full-feed benchmark processed 1,740 articles into 1,540 events and 15 approved claims. Five matched official values. Ten use attributed reporting clauses, including outages, earnings, a shareholder allegation, IPO pricing, a factory plan and a traded Bitcoin threshold. Topic overlap does not guarantee coverage, particularly for a narrow time or regional filter. All six positive and five negative manual development pairs matched final memberships. The official story key and organizer listener profiles were unavailable on this checkout. Walk through the supplied example listeners and enter the real wildcard live. Treat the manual sample as development evidence. [Grouping evaluation](EVENT_GROUPING_EVALUATION.md)
 
-Put the funded teammate's `OPENAI_API_KEY` in their own ignored `.env`, set `VOXNEWS_API_REQUESTS_PAUSED=0`, then run:
+The proposed customer is a publisher. Editors import licensed feeds, inspect held claims and conflicting reports, and publish a shared checked catalogue. Listener settings and feedback control selection and presentation. Corrections create new catalogue revisions while preserving evidence in past editions. The commercial proposition still needs customer validation.
 
-```sh
-python3 -m voxnews.demo --date 2026-11-19 --model-events 40
-python3 app.py --cloud-only --port 50500
+## Optional hosted path
+
+Keep cloud secrets in the ignored `.env.demo`, never in `.env` for the local pitch. Launch in a separate shell with a funded OpenAI key and an explicit unpause only when the team authorizes charges. ElevenLabs is separately billed and needs its own key and voice ID for cloud audio. The hosted app uses port 50500, `output/cloud-demo/` and `user_data/cloud-demo/`. Existing authorized caches can reduce repeat charges.
+
+```powershell
+python -m voxnews.demo --date 2026-11-19 --model-events 40
+python app.py --cloud-only --port 50500
 ```
 
-Restart the server after changing credentials or pause settings. Environment values loaded at startup take precedence. Preparation reuses cloud caches and completes the deferred event-wide checks, overview batches and translation reviews. The 40-event limit is intentional; every event in the dataset has not been verified.
+Earlier hosted work stopped at the available budget. Its saved draft and caches do not establish full verification, final cloud composition or ElevenLabs playback. The updated grouping path adds strong release and outage signatures ahead of model review. Those matches were verified locally and the cloud route was exercised without provider requests. The previous hosted output remains a historical result. Current hosted end-to-end verification remains open.
 
-Then test actual cloud-composed deliveries through the app, audit three claims and compare listener profiles. Final cloud-composition HTTP checks were not run before the budget pause. The earlier *local-model* HTTP results are separate and must not be presented as cloud verification. ElevenLabs testing remains deferred at the user's request.
-
-**Known evaluation work**
-
-The cloud grouping sample has four correct positive matches, two missed positives, four correct negatives and one pair outside the seven-day window. The missed matches are the US producer-price release and the Microsoft/Outlook outage. All six positive pairs were retained as candidates. Inspect hosted grouping descriptors and decision confidence; the hosted payload currently emphasizes extracted features. Consider adding bounded headline/lead context, then evaluate final memberships again. Changed inputs/models require newly checked event revisions. The earlier local-model perfect sample score is not the cloud result. The official answer key remains unavailable.
-
-The API pause is enforced before OpenAI transports and uncached claim calls. Cached responses remain usable. Missing checks are deferred and their claims cannot be served. No new narration was generated or tested during this work.
+Keep the input feeds, cached source records, generated pitch assets, transcripts and audio inside the team's authorized environment. Delete licensed inputs, derived records and team copies at the end of the permitted period.

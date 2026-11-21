@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 
 from . import providers
 from .official_releases import digest
+from .usage import provider_response
 
 
 class CloudEncoder:
@@ -23,13 +24,12 @@ class CloudEncoder:
         providers.require_requests()
         key = providers.api_key()
         if not key:
-            raise ValueError("Configure OPENAI_API_KEY in .env to prepare the cloud demo.")
+            raise ValueError("Configure OPENAI_API_KEY in .env.demo to prepare the cloud demo.")
         request = Request("https://api.openai.com/v1/embeddings",
             data=json.dumps({"model": self.name, "input": texts, "dimensions": 384,
                              "encoding_format": "float"}).encode(),
             headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
-        with urlopen(request, timeout=120) as response:
-            return json.load(response)
+        return provider_response(request, urlopen, stage="embedding", model=self.name, timeout=120)
 
     def __call__(self, articles):
         import numpy as np
@@ -53,8 +53,9 @@ class CloudEncoder:
                 batch = missing[offset:offset+64]
                 result = self.transport([texts[i] for i in batch])
                 self.usage["calls"] += 1
-                self.usage["input_tokens"] += result.get("usage", {}).get("prompt_tokens", 0)
-                if "prompt_tokens" not in result.get("usage", {}):
+                tokens = (result.get("usage") or {}).get("prompt_tokens")
+                self.usage["input_tokens"] += tokens or 0
+                if tokens is None:
                     self.usage["unmetered_calls"] = self.usage.get("unmetered_calls", 0) + 1
                 rows = result["data"]
                 if (len(rows) != len(batch) or any(type(r.get("index")) is not int for r in rows)

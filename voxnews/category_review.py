@@ -93,8 +93,12 @@ class CategoryReview:
                     },
                 }
             )
+            receipt = response.get("usage") or {}
             for metric in ("input_tokens", "output_tokens"):
-                self.usage[metric] += response.get("usage", {}).get(metric, 0)
+                self.usage[metric] += receipt.get(metric) or 0
+            self.usage["cached_tokens"] += (receipt.get("input_tokens_details") or {}).get("cached_tokens") or 0
+            if any(receipt.get(metric) is None for metric in ("input_tokens", "output_tokens")):
+                self.usage["unmetered_calls"] += 1
             try:
                 answer = json.loads(response["output"][0]["content"][0]["text"])
                 ids = answer["ids"]

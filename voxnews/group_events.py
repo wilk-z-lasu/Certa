@@ -16,7 +16,7 @@ from .categorize import reject_constant
 from .event_candidates import Article, CandidateIndex, reporting_origins
 from .event_embeddings import E5Encoder
 from .event_groups import event_records, form_groups
-from .luna import BATCH_SIZE, MODEL, LunaJudge, ModelError, usage_cost
+from .luna import BATCH_SIZE, MODEL, Decision, LunaJudge, ModelError, usage_cost
 from . import providers
 from .topic_rules import TOPICS
 
@@ -162,6 +162,25 @@ def candidate_records(comparisons, origins, articles, reviews):
         }
 
 
+def offline_events(input_dir, categories, output, *, start, before, previous=None):
+    articles = load_articles(input_dir, categories, start, before)
+    index = CandidateIndex(articles, None)
+    origins, origin_reviews = reporting_origins(articles)
+    pairs = index.signature_pairs(origins)
+    decisions = {
+        pair.key: Decision("same_event", "matching_release" if feature == "reporting_period" else "matching_occurrence",
+                           (feature, "timing"))
+        for pair in pairs.values() if (feature := pair.matching_signature(articles))
+    }
+    groups, reviews, _ = form_groups(index, origins, pairs, decisions)
+    records = list(event_records(groups, origins, reviews, origin_reviews, articles, decisions,
+                                 previous_events(previous), "occurrence-rules", "occurrence-rules-1"))
+    write_jsonl(output, records)
+    return {"articles": len(articles), "reporting_origins": len(origins), "events": len(records),
+            "event_status": dict(Counter(record["status"] for record in records)),
+            "signature_matches": len(decisions), "model": "occurrence-rules", "luna_calls": 0}
+
+
 def run(
     input_dir: Path, categories: Path, output: Path, *,
     encoder, judge, start=None, before=None, previous=None, candidates_only=False,
@@ -181,9 +200,11 @@ def run(
     index = CandidateIndex(articles, vectors)
     origins, origin_reviews = reporting_origins(articles, index)
     comparisons = index.shortlist(list(origins))
-    feature_candidates = len(comparisons)
+    signatures = index.signature_pairs(origins)
+    feature_candidates = len(comparisons.keys() | signatures.keys())
     if not candidates_only and providers.local():
         comparisons = {k:p for k,p in comparisons.items() if p.local_candidate(articles)}
+    comparisons.update(signatures)
     shortlisted = perf_counter()
     summary = {
         "articles": len(articles), "reporting_origins": len(origins),
@@ -210,6 +231,12 @@ def run(
             comparisons.update(anchors_to_check)
             groups, reviews, anchors_to_check = form_groups(index, origins, comparisons, decisions)
         grouping_model = getattr(judge,"model",MODEL)
+        unmetered = judge.stats["luna_calls"] - judge.stats.get("metered_calls", 0)
+        stage_cost = None
+        if providers.local() or judge.stats["luna_calls"] == 0:
+            stage_cost = 0
+        elif grouping_model == MODEL and not unmetered:
+            stage_cost = usage_cost(judge.stats)
         records = list(event_records(groups, origins, reviews, origin_reviews, articles, decisions, previous_rows, grouping_model, getattr(judge,"prompt_version",None)))
         write_jsonl(output, records)
         summary.update({
@@ -219,9 +246,11 @@ def run(
             "anchor_comparisons": anchor_pairs, "model": grouping_model, "model_revision": getattr(judge,"revision",grouping_model),
             **{key: judge.stats[key] for key in (
                 "luna_calls", "invalid_local_decisions", "retries", "cache_hits", "input_tokens", "cached_input_tokens", "output_tokens",
+                "signature_matches",
             )},
-            "estimated_usage_cost_usd": (round(usage_cost(judge.stats), 6) if grouping_model == MODEL else (0 if providers.local() else None)),
-            "estimated_10x_usage_cost_usd": (round(10 * usage_cost(judge.stats), 6) if grouping_model == MODEL else (0 if providers.local() else None)),
+            "unmetered_calls": unmetered,
+            "estimated_usage_cost_usd": None if stage_cost is None else round(stage_cost, 6),
+            "estimated_10x_usage_cost_usd": None if stage_cost is None else round(10 * stage_cost, 6),
         })
 
     seconds = perf_counter() - started

@@ -10,7 +10,7 @@ import sqlite3
 from generate_script import validate_daily
 from .group_events import read_jsonl, timestamp
 from .official_releases import digest
-from .overview_reader import connect, get_event, Passages
+from .overview_reader import connect, get_event, Passages, short_quote
 from build_preai import approved_claim
 
 
@@ -53,7 +53,7 @@ def evaluate_pairs(events, reference):
     }
 
 
-def text_audit(path, draft, briefing):
+def text_audit(path, draft, briefing, *, include_quotes=False):
     validate_daily(draft, briefing)
     if digest({k: v for k, v in draft.items() if k != "id"}) != draft["id"]:
         raise ValueError("Draft checksum mismatch")
@@ -104,6 +104,8 @@ def text_audit(path, draft, briefing):
                         }
                     }
                 )
+                if include_quotes and ref["role"] == "supports":
+                    evidence[-1]["quote"] = short_quote(passage)
             checks.append(
                 {
                     "claim": segment["text"],

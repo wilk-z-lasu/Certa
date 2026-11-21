@@ -11,7 +11,7 @@ import sqlite3
 from tempfile import NamedTemporaryFile
 from time import perf_counter
 
-from . import claim_rules, providers
+from . import claim_rules, editorial_rules, providers
 from .categorization import validate_article
 from .claim_models import ClaimModels, excerpt
 from .event_candidates import fingerprint
@@ -67,11 +67,12 @@ def load_feeds(directory, start, before, *, include_locations=False):
                 if not isinstance(body, str):
                     raise ValueError("invalid article body")
                 articles[aid] = {"$id": aid, "date": row["date"], "permalink": row["permalink"],
-                                 "headline": row.get("headline") or "", "language": row["language"],
+                                 "headline": row.get("headline") or "", "excerpt": row.get("excerpt") or "",
+                                 "language": row["language"],
                                  "publisher": (row.get("publication") or {}).get("name") or path.stem,
                                  "text_content": body, "body_hash": fingerprint(body)}
                 if include_locations:
-                    articles[aid].update(excerpt=row.get("excerpt") or "", author=row.get("source") or "",
+                    articles[aid].update(author=row.get("source") or "",
                                          feed_file=path.name, byte_offset=offset, byte_length=size)
             except (ValueError, TypeError, AttributeError) as error:
                 raise ValueError(f"{location}: {error}") from error
@@ -310,15 +311,28 @@ def figure_anchors(quote, fact, published):
     return False
 
 
-def rule_event(event, members, uncertain, articles, db, official, counts):
+def rule_event(event, members, uncertain, articles, db, official, counts, *, editorial=False):
     by_fact = defaultdict(list)
+    by_development = defaultdict(list)
     sources = []
     for aid, origin in sorted(members):
         article = articles[aid]
         sources.append(evidence(article, origin, {}))
         for dims, value, span in rule_rows(db, article, counts):
             by_fact[tuple(dims), value].append(evidence(article, origin, span))
+        if editorial and not uncertain:
+            for development, span in editorial_rules.claims(article):
+                key = development.signature, development.kind, development.wording
+                translations, refs = by_development.setdefault(key, (development.translations, []))
+                refs.append(evidence(article, origin, span))
     claims = [fact_claim(event, dims, value, official, refs, "rules") for (dims, value), refs in by_fact.items()]
+    for (cue, kind, wording), (translations, refs) in by_development.items():
+        claims.append({
+            "id": digest([event, cue, wording]), "kind": kind, "wording": wording, "translations": translations,
+            "method": "editorial_rules", "article_state": "supported", "evidence_state": "reported",
+            "support": refs, "contradict": [], "official_state": "not_applicable", "official": [],
+            "approved": True, "reasons": [],
+        })
     return {"event_id": event, "group_needs_review": uncertain, "sources": sources, "claims": claims,
             "model_status": "not_requested"}
 
@@ -616,7 +630,8 @@ def edit_overview_batch(event, claims, articles, models):
 
 
 def verify(directory, before, db, *, packs=(DEFAULT_PACK,), start=None, events=None, origins=None,
-           models=None, model_events=0, audit_every=0, model_overviews=False, isolate_failures=False, processing=None):
+           models=None, model_events=0, audit_every=0, model_overviews=False, isolate_failures=False,
+           processing=None, editorial_rules_only=False):
     if start and start >= before:
         raise ValueError("start must be earlier than cutoff")
     if model_events < 0 or audit_every < 0 or (model_events and models is None):
@@ -629,7 +644,7 @@ def verify(directory, before, db, *, packs=(DEFAULT_PACK,), start=None, events=N
     counts = Counter()
     db.execute("CREATE TABLE IF NOT EXISTS claim_rules (key TEXT PRIMARY KEY, result TEXT NOT NULL)")
     with db:
-        records = [rule_event(key, members, uncertain, articles, db, official, counts)
+        records = [rule_event(key, members, uncertain, articles, db, official, counts, editorial=editorial_rules_only)
                    for key, (members, uncertain) in groups.items()]
     # Triage ranks work before the model budget is spent. It does not establish support.
     apply_conflicts(records)
@@ -637,7 +652,7 @@ def verify(directory, before, db, *, packs=(DEFAULT_PACK,), start=None, events=N
              "official_conflict", "article_conflict"]
     for event in records:
         claims = event["claims"]
-        states = {c["official_state"] for c in claims}
+        states = {c["official_state"] for c in claims if "fact" in c}
         if any(c["article_state"] == "disputed" for c in claims):
             triage = "article_conflict"
         elif "conflict" in states:

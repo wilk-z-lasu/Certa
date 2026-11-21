@@ -104,6 +104,19 @@ class DailyBackendTest(unittest.TestCase):
                 event = get_event(ed, c["event_id"], c["revision"])
                 self.assertTrue(Passages(ed).text(c["sources"][0], event["sources"]))
 
+    def test_replay_keeps_first_attempt_and_migrates_an_older_report(self):
+        day = date(2026, 11, 19)
+        directory = self.out / "days" / day.isoformat()
+        original = self.reports[-1]
+        old_path = directory / "attempts" / (original["attempt_id"] + ".json")
+        original_bytes = old_path.read_bytes()
+        (directory / "report.json").write_text('{"old":true}', encoding="utf-8")
+        replay = prepare(self.feeds, self.out, day, 7, offline=True)
+        self.assertEqual(old_path.read_bytes(), original_bytes)
+        self.assertEqual(json.loads(next((directory / "attempts").glob("legacy-*.json")).read_bytes()), {"old": True})
+        self.assertEqual(json.loads((directory / "report.json").read_bytes())["attempt_id"], replay["attempt_id"])
+        self.assertNotEqual(replay["attempt_id"], original["attempt_id"])
+
     def test_two_day_feedback_is_scoped_idempotent_and_reversible(self):
         with storage(self.root / "listeners") as db:
             profile = self.profile(db, "one", "GB")
@@ -221,6 +234,11 @@ class DailyBackendTest(unittest.TestCase):
             status, first = request("/api/briefing", {"date": "2026-11-18", "version": profile["version"]})
             self.assertEqual(status, 200)
             self.assertEqual(first["validation"], "passed")
+            claim = first["segments"][0]
+            status, evidence = request(f'/evidence/{claim["event_id"]}/{claim["revision"]}?claim={claim["claim_id"]}')
+            self.assertEqual(status, 200)
+            self.assertIn(f'<details id="c{claim["claim_id"]}" open>', evidence)
+            self.assertIn("<blockquote>", evidence)
             status, changed = request("/api/feedback", {"edition": first["edition"],
                 "answers": {"length": "less", "more": ["currencies"]}})
             self.assertEqual((status, changed["version"], changed["minutes"]), (200, 2, 1))
@@ -232,3 +250,48 @@ class DailyBackendTest(unittest.TestCase):
             self.assertEqual(request("/api/profile", isolated=True)[1]["profile"], None)
             self.assertEqual(request("/api/feedback", {"edition": first["edition"],
                 "answers": {"skip": True}}, isolated=True)[0], 400)
+
+            _, presets = request("/api/people")
+            self.assertEqual([p["name"] for p in presets], ["Maya", "Ellis", "Noor", "Jonas"])
+            for key, lang, region in (("noor", "nl", "NL"), ("jonas", "de", "DE")):
+                _, state = request("/api/profile?persona=" + key)
+                self.assertEqual((state["profile"]["language"], state["profile"]["region"]), (lang, region))
+            _, tech = request("/api/profile?persona=technology")
+            _, macro = request("/api/profile?persona=macro")
+            self.assertNotEqual(tech["profile"]["topics"], macro["profile"]["topics"])
+            self.assertNotEqual(tech["profile"]["depth"], macro["profile"]["depth"])
+            status, wildcard = request("/api/people", {
+                "name": "Wildcard", "settings": {**macro["profile"], "minutes": 4, "region": "GB"},
+            })
+            self.assertEqual(status, 200)
+            query = "?persona=" + wildcard["id"]
+            self.assertEqual(request("/api/people")[1][-1]["name"], "Wildcard")
+            self.assertEqual(request("/api/people", isolated=True)[1], presets)
+            self.assertEqual(request("/api/profile" + query, isolated=True)[0], 400)
+            _, wildcard_profile = request("/api/profile" + query)
+            self.assertEqual(wildcard_profile["profile"]["minutes"], 4)
+            status, wildcard_edition = request("/api/briefing" + query, {"date": "2026-11-18"})
+            self.assertEqual(status, 200)
+            self.assertNotEqual(wildcard_edition["edition"], first["edition"])
+            self.assertEqual(request("/api/feedback", {"edition": wildcard_edition["edition"],
+                "answers": {"skip": True}})[0], 400)
+            self.assertEqual(request("/api/feedback" + query, {"edition": wildcard_edition["edition"],
+                "answers": {"length": "more"}})[1]["minutes"], 5)
+            self.assertEqual(request("/api/profile?persona=macro")[1]["profile"]["minutes"], 8)
+            self.assertEqual(request("/api/profile" + query)[1]["delivered"], ["2026-11-18"])
+            self.assertEqual(request("/api/profile?persona=macro")[1]["delivered"], [])
+            remove = "/api/people/remove"
+            self.assertEqual(request(remove, {"id": wildcard["id"]}, isolated=True)[0], 400)
+            self.assertEqual(request(remove, {"id": wildcard["id"]})[0], 200)
+            self.assertEqual(request("/api/profile" + query)[0], 400)
+            self.assertEqual(request("/api/people")[1], presets)
+            for preset in presets:
+                self.assertEqual(request(remove, {"id": preset["id"]})[0], 200)
+            self.assertEqual(request("/api/people")[1], [])
+            self.assertEqual(request("/api/profile?persona=macro")[0], 400)
+            self.assertEqual(request("/api/people", isolated=True)[1], presets)
+            self.assertEqual(request(remove, {"id": ""})[0], 200)
+            self.assertEqual(request("/api/profile")[0], 400)
+            status, new = request("/api/people", {"name": "New listener", "settings": tech["profile"]})
+            self.assertEqual(status, 200)
+            self.assertEqual(request("/api/people")[1], [{"id": new["id"], "name": "New listener"}])

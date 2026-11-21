@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from voxnews import providers
 from voxnews.official_releases import digest
 from voxnews.trust_briefing import DISCLOSURE, MONTHS
+from voxnews.usage import provider_response
 from voxnews.verify import write_atomic
 
 
@@ -92,8 +93,7 @@ def request_script(draft, profile, key):
         if providers.local():
             result = providers.local_request(payload)
         else:
-            with urlopen(request, timeout=120) as response:
-                result = json.load(response)
+            result = provider_response(request, urlopen, stage="writing", model=payload["model"], timeout=120)
     except HTTPError as error:
         if error.code == 401:
             raise ScriptError("OpenAI authentication failed. Check OPENAI_API_KEY.") from error
@@ -206,7 +206,12 @@ def compose_draft(draft, profile):
             segments[claim["claim_id"]] = {**claim, "event_id": event["event_id"], "revision": event["revision"]}
     if not segments:
         raise ScriptError("No approved claims are available for the briefing.")
-    key = "local" if providers.local() else api_key()
+    if providers.local():
+        key = "local"
+    elif providers.requests_paused() and not providers.cloud_only():
+        key = None
+    else:
+        key = api_key()
     if providers.cloud_only() and not key:
         raise ScriptError("The cloud-only demo requires OPENAI_API_KEY. Local and offline fallback are disabled.")
     started = perf_counter()

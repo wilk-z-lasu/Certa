@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from bisect import bisect_right
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from hashlib import sha256
 from heapq import heappush, heappushpop
 import re
+from urllib.parse import urlsplit
 from zlib import crc32
 import unicodedata
 
 from .topic_rules import phrase
+from .editorial_rules import occurrences
 
 
 KINDS = {
@@ -47,9 +49,12 @@ RELEASE_SUBJECTS = {
 }
 RELEASE_PATTERNS = {region:re.compile(
     rf"\b(?:{names})(?:['’]s)?\s+(?:(?:headline|core|wholesale|annual|monthly)\s+)?"
-    r"(?:inflation|inflatie|cpi[h]?|hicp|ppi|producer prices?|consumer prices?|gdp)\b",re.I)
+    r"(?:inflation|inflatie|cpi[h]?|hicp|ppi|producer prices?|consumer prices?|wholesale (?:prices?|inflation)|gdp)\b",re.I)
     for region,names in RELEASE_SUBJECTS.items()}
 PERIOD_KINDS = {"producer_prices", "consumer_prices", "gdp", "jobs_report", "earnings"}
+RELEASE_MATCH_KINDS = frozenset({"producer_prices"})
+REPORTED_RELEASE = phrase(r"(?:ppi|producer prices?|wholesale (?:prices?|inflation)) "
+                          r"(?:slows?|rose|rises?|increased|increases?|fell|falls?|declined|held)")
 
 # Only these canonical names, validated ticker symbols, and derived counts can
 # leave the process. Other entity-like tokens are used for local ranking only.
@@ -174,6 +179,8 @@ class Article:
     shingles: frozenset[int]
     figures: tuple[str, ...]
     release_regions: tuple[str, ...]
+    occurrence_cues: tuple[tuple[str, str], ...] = ()
+    thumbnail: str = ""
 
     @classmethod
     def from_source(cls, row, category, feed, published):
@@ -182,6 +189,12 @@ class Article:
         text = headline + "\n" + excerpt
         primary = [kind for kind, pattern in KIND_PATTERNS.items() if pattern.search(headline)]
         kinds = tuple(primary or [kind for kind, pattern in KIND_PATTERNS.items() if pattern.search(excerpt[:400])])
+        cues = tuple(
+            (event.signature.partition(":")[0], fingerprint(event.signature)[:16])
+            for event in occurrences(headline, excerpt) if event.signature
+        )
+        if any(kind == "service_outage" for kind, _ in cues) and "outage" not in kinds:
+            kinds += ("outage",)
         names = {ACTORS[name] for name, pattern in ACTOR_PATTERNS.items() if pattern.search(text)}
         tickers = row.get("company_tickers") or []
         if isinstance(tickers, list):
@@ -201,6 +214,8 @@ class Article:
             frozenset(normalize(word) for word in PROPER_WORD.findall(text)),
             shingles, tuple(re.findall(r"\d+(?:[.,]\d+)*",body)),
             tuple(code for code,pattern in RELEASE_PATTERNS.items() if pattern.search(headline)),
+            cues,
+            thumbnail_key(row.get("thumb_url")),
         )
 
     def descriptor(self):
@@ -213,7 +228,17 @@ class Article:
             "reporting_period": self.period,
             "mentioned_date": self.event_date,
             "release_regions":self.release_regions,
+            "occurrence_cues": self.occurrence_cues,
         }
+
+    def signatures(self):
+        signatures = [("occurrence_cues", cue) for cue in self.occurrence_cues]
+        measures = RELEASE_MATCH_KINDS.intersection(self.kinds)
+        if (self.period and len(self.release_regions) == len(measures) == 1
+                and REPORTED_RELEASE.search(self.headline) and "?" not in self.headline
+                and not re.search(r"\b(?:if|could|would|may|forecast|revisions?|revised)\b", self.headline, re.I)):
+            signatures.append(("reporting_period", self.release_regions[0], next(iter(measures)), self.period))
+        return signatures
 
 
 @dataclass(frozen=True)
@@ -271,6 +296,21 @@ class Comparison:
             "shared_local_terms": self.shared_terms,
         }
 
+    def matching_signature(self, articles):
+        left, right = (articles[i] for i in self.key)
+        return matching_signature(left, right, self.gap_hours)
+
+
+def matching_signature(left, right, hours):
+    if left.event_date and right.event_date and left.event_date != right.event_date:
+        return None
+    for signature in left.signatures():
+        if signature in right.signatures():
+            limit = 36 if signature[0] == "occurrence_cues" else 24
+            if hours <= limit and not conflicting_periods(left, right):
+                return signature[0]
+    return None
+
 
 def conflicting_periods(left, right):
     # Different explicit periods form distinct occurrences of the same type.
@@ -279,6 +319,46 @@ def conflicting_periods(left, right):
         and ("-Q" in left.period) == ("-Q" in right.period)
         and len(left.kinds) == 1 and left.kinds == right.kinds
     )
+
+
+def thumbnail_key(value):
+    if not isinstance(value, str):
+        return ""
+    try:
+        url = urlsplit(value)
+    except ValueError:
+        return ""
+    filename = url.path.rsplit("/", 1)[-1]
+    if (url.scheme != "https" or not url.hostname or not filename
+            or re.search(r"placeholder|default|no[-_]?image|logo|generic", filename, re.I)):
+        return ""
+    return value
+
+
+def thumbnail_translations(articles, representatives):
+    """Link publisher translations using unique artwork, byline and release timing."""
+    relevant = [(i, article) for i, article in enumerate(articles)
+                if article.language in {"en", "de", "nl"} and article.feed == f"invezz_{article.language}"
+                and article.thumbnail]
+    uses = Counter((article.language, article.thumbnail) for _, article in relevant)
+    originals = {
+        article.thumbnail: i for i, article in relevant
+        if article.language == "en" and uses["en", article.thumbnail] == 1
+    }
+    translations = {}
+    for i, article in relevant:
+        if (article.language == "en" or representatives[i] != i
+                or uses[article.language, article.thumbnail] != 1):
+            continue
+        j = originals.get(article.thumbnail)
+        if j is None:
+            continue
+        original = articles[j]
+        if (article.author and article.author == original.author
+                and abs((article.published - original.published).total_seconds()) <= 900
+                and not conflicting_periods(article, original)):
+            translations[i] = representatives[j]
+    return translations
 
 
 class CandidateIndex:
@@ -290,7 +370,7 @@ class CandidateIndex:
         left, right = sorted((a, b))
         first, second = self.articles[left], self.articles[right]
         if similarity is None:
-            similarity = self.vectors[left] @ self.vectors[right]
+            similarity = self.vectors[left] @ self.vectors[right] if self.vectors is not None else 0
         return Comparison(
             left, right, round(float(similarity), 4),
             round(abs((second.published - first.published).total_seconds()) / 3600, 3),
@@ -330,8 +410,26 @@ class CandidateIndex:
                 selected[pair.key] = pair
         return dict(sorted(selected.items()))
 
+    def signature_pairs(self, representatives):
+        """Preserve specific occurrence matches even when generic neighbors rank higher."""
+        recent = defaultdict(list)
+        selected = {}
+        for right in representatives:
+            article = self.articles[right]
+            for signature in article.signatures():
+                hours = article.published.timestamp() - 36 * 3600
+                # Remove expired articles before comparing reports sharing the signature.
+                recent[signature] = [i for i in recent[signature]
+                                     if self.articles[i].published.timestamp() >= hours]
+                for left in recent[signature]:
+                    pair = self.compare(left, right)
+                    if pair.matching_signature(self.articles):
+                        selected[pair.key] = pair
+                recent[signature].append(right)
+        return selected
 
-def reporting_origins(articles, index):
+
+def reporting_origins(articles, index=None):
     """Map confirmed copies and translations to representative article indices."""
     exact, representatives = {}, {}
     anchors = defaultdict(list)
@@ -356,6 +454,12 @@ def reporting_origins(articles, index):
             for k in keys:
                 anchors[k].append(i)
 
+    if index is None:
+        translations = thumbnail_translations(articles, representatives)
+        by_origin = defaultdict(list)
+        for i, rep in representatives.items():
+            by_origin[translations.get(rep, rep)].append(i)
+        return dict(sorted(by_origin.items())), set()
     english = defaultdict(list)
     for i, article in enumerate(articles):
         if article.feed == "invezz_en" and article.language == "en" and article.author:

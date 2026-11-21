@@ -163,14 +163,15 @@ class ClaimModels:
             usage["budget_holds"] += 1
             raise RequestsPaused(f"{stage} is not cached; paid requests are paused to preserve credits")
         usage["calls"] += 1
+        usage["unmetered_calls"] += 1
         try:
             result = self.transport(payload)
             counts = result.get("usage") or {}
-            if "input_tokens" not in counts or "output_tokens" not in counts:
-                usage["unmetered_calls"] += 1
-            usage["input_tokens"] += counts.get("input_tokens", 0)
-            usage["cached_tokens"] += (counts.get("input_tokens_details") or {}).get("cached_tokens", 0)
-            usage["output_tokens"] += counts.get("output_tokens", 0)
+            if all(counts.get(key) is not None for key in ("input_tokens", "output_tokens")):
+                usage["unmetered_calls"] -= 1
+            usage["input_tokens"] += counts.get("input_tokens") or 0
+            usage["cached_tokens"] += (counts.get("input_tokens_details") or {}).get("cached_tokens") or 0
+            usage["output_tokens"] += counts.get("output_tokens") or 0
             if result.get("status") != "completed":
                 raise ValueError("incomplete response")
             blocks = [b["text"] for item in result["output"] if item["type"] == "message"

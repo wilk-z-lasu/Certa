@@ -20,31 +20,67 @@ HOSTED = {
     "review": "gpt-6.2-astra",
     "composition": "gpt-6.2-astra",
 }
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def cloud_only():
+    return os.getenv("VOXNEWS_CLOUD_ONLY", "0").lower() in {"1", "true", "yes"}
+
+
+def environment_files():
+    return (ROOT / ".env.demo",) if cloud_only() else (ROOT / ".env", ROOT / ".env.local")
+
+
+def file_settings(path):
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8-sig").splitlines():
+            line = line.strip().removeprefix("export ")
+            key, separator, value = line.partition("=")
+            if not separator or not key.strip() or line.startswith("#"):
+                continue
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                value = value[1:-1]
+            yield key.strip(), value
+
+
+def load_dotenv(path):
+    for key, value in file_settings(path):
+        os.environ.setdefault(key, value)
+
+
+def load_environment(*, cloud_demo=False):
+    # Select the mode before loading credentials, including on machines with older .env files.
+    os.environ["VOXNEWS_CLOUD_ONLY"] = "1" if cloud_demo else "0"
+    for path in environment_files():
+        load_dotenv(path)
 
 
 def setting(name, default=None):
     if name in os.environ:
         return os.environ[name]
-    for filename in (".env", ".env.local"):
-        path = Path(__file__).resolve().parents[1] / filename
-        if path.is_file():
-            for line in path.read_text().splitlines():
-                key, separator, value = line.strip().removeprefix("export ").partition("=")
-                if separator and key.strip() == name:
-                    return value.strip().strip('"\'')
+    for path in environment_files():
+        for key, value in file_settings(path):
+            if key == name:
+                return value
     return default
 
 
-def cloud_only():
-    return setting("VOXNEWS_CLOUD_ONLY", "0").lower() in {"1", "true", "yes"}
-
-
 def requests_paused():
-    return setting("VOXNEWS_API_REQUESTS_PAUSED", "0").lower() in {"1", "true", "yes"}
+    return not local() and paid_requests_paused()
+
+
+def paid_requests_paused():
+    return setting("VOXNEWS_API_REQUESTS_PAUSED", "1" if cloud_only() else "0").lower() in {"1", "true", "yes"}
 
 
 def require_requests():
-    if requests_paused():
+    if not local():
+        require_paid_requests()
+
+
+def require_paid_requests():
+    if paid_requests_paused():
         raise ValueError("Paid API requests are paused to preserve credits. Cached cloud results remain available.")
 
 

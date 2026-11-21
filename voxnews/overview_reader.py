@@ -212,14 +212,24 @@ def markdown(data):
     return "\n".join(lines)
 
 
-def log_html(event):
-    """Shareable claim/source log. Keep licensed body text in the internal writer packet."""
-    def cite(ref):
+def short_quote(passage):
+    """A short quotation from the verified span for an individual claim."""
+    words = passage.split()
+    quote = " ".join(words[:16])
+    return quote + (" …" if len(words) > 16 else "")
+
+
+def log_html(event, *, claim=None, passages=None):
+    """Show the selected claim with a short supporting excerpt when the archive is available."""
+    def cite(ref, selected):
         src = event["sources"][ref["source_id"]]
         locator = ref.get("locator") or f'{ref["field"]} [{ref["start"]}, {ref["end"]})'
         label = src.get("publisher") or src["issuer"]
         url = escape(safe_url(src["url"]), quote=True)
-        return f'<li><a href="{url}">{escape(label)}</a> · {escape(ref["role"])} · {escape(locator)}</li>'
+        quote = ""
+        if selected and passages and ref["role"] == "supports":
+            quote = f'<blockquote>{escape(short_quote(passages.text(ref, event["sources"])))}</blockquote>'
+        return f'<li><a href="{url}">{escape(label)}</a> · {escape(ref["role"])} · {escape(locator)}{quote}</li>'
     def label(i):
         if i.get("summary"):
             return i["summary"]
@@ -229,7 +239,7 @@ def log_html(event):
         values = [q["raw"] for q in i.get("quantities", [])]
         return " · ".join(dict.fromkeys(labels + values))
     def detail(i):
-        refs = "".join(cite(r) for r in i["evidence"])
+        refs = "".join(cite(r, i["id"] == claim) for r in i["evidence"])
         used = {r["source_id"] for r in i["evidence"]}
         for sid in i.get("examined_source_ids", []):
             if sid not in used:
@@ -238,7 +248,8 @@ def log_html(event):
         state = i.get("evidence_state",i.get("article_state"))
         basis = i.get("reasons",[]) or (["direct article evidence"] if state == "supported" else [])
         status = [s for s in (state,i.get("official_state"),*basis,i["draft_use"]) if s]
-        return (f'<details id="c{i["id"]}"><summary>{escape(label(i))}</summary>'
+        expanded = " open" if i["id"] == claim else ""
+        return (f'<details id="c{escape(i["id"], quote=True)}"{expanded}><summary>{escape(label(i))}</summary>'
                 f'<p>{escape(" · ".join(status))}</p><ul>{refs}</ul><small>Claim {escape(i["id"])}</small></details>')
     conflicts = []
     for issue in event["disagreements"]:
