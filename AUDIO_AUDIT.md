@@ -7,15 +7,15 @@ The app reads the same checked sentences it displays in the transcript. Click **
 Run from the repository root in a regular Windows user session with FFmpeg and ffprobe on PATH. With the prepared catalogue in `output/event-overviews.sqlite3`, start the app in one PowerShell window.
 
 ```powershell
-$env:VOXNEWS_API_REQUESTS_PAUSED = '1'
-$env:VOXNEWS_NARRATION = 'offline'
+$env:CERTA_API_REQUESTS_PAUSED = '1'
+$env:CERTA_NARRATION = 'offline'
 python app.py --port 8430
 ```
 
 In another window, run the audit against that server. It creates a fresh browser session and records both preset editions and a new English wildcard who prioritizes crypto and follows technology.
 
 ```powershell
-python -m voxnews.audit_audio --date 2026-11-19 --output output/audio-audit
+python -m certa.audit_audio --date 2026-11-19 --output output/audio-audit
 ```
 
 Within each listener folder, `briefing.wav` is the consecutive playback of the verified app segments. `manifest.json` has their measured intervals and audio hashes, `briefing.json` has the saved edition and composition timings, and `claim-audit.json` lists evidence URLs and checked source locations. `quality.json` reports the probed playback duration, words per minute and elapsed segment rendering time. The audit checks that a saved edition reopens unchanged, the replay is a cache hit, the downloaded bytes match their hashes and the claim evidence links expand the correct rows. It checks publisher spans against the local licensed feed and compares supported official observations with the bundled release pack. Keep recordings and generated receipts under ignored `output/`.

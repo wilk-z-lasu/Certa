@@ -257,10 +257,10 @@ def log_html(event, *, claim=None, passages=None):
         conflicts.append(f'<li>{escape(issue["kind"])} · {links}</li>')
     title = escape(event["title"])
     return (f'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
-            f'<title>{title} | VoxNews sources</title><style>body{{max-width:52rem;margin:3rem auto;padding:0 1rem;'
+            f'<title>{title} | Certa sources</title><style>body{{max-width:52rem;margin:3rem auto;padding:0 1rem;'
             'font:16px/1.55 system-ui;color:#19322e;background:#fafbf8}h1{font:2.3rem Georgia,serif}a{color:#065e56}'
             'details{padding:.7rem 0;border-top:1px solid #cbd5d1}summary{cursor:pointer}small{overflow-wrap:anywhere}'
-            '</style><main><small>VoxNews · Event source log</small>'
+            '</style><main><small>Certa · Event source log</small>'
             f'<h1>{title}</h1><p>{escape(" · ".join(event["topics"]))}</p>'
             f'<p>Revision <small>{escape(event["revision"])}</small></p>'
             + ('<h2>Disagreements and revisions</h2><ul>'+"".join(conflicts)+'</ul>' if conflicts else '')

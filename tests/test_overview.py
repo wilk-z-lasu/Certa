@@ -8,16 +8,16 @@ import unittest
 import wave
 from zipfile import ZipFile
 
-from voxnews.categorization import categorize_article
-from voxnews.group_events import timestamp, write_jsonl
-from voxnews.official_releases import digest
-from voxnews.overview import build
-from voxnews.overview_demo import event_page, export_demo
-from voxnews.overview_reader import catalogue, connect, get_event, log_html, packet, source_log
-from voxnews.overview_synthesis import enrich, grounded_notes
-from voxnews.overview_web import render
-from voxnews.trust_briefing import compose
-from voxnews.verify import verify
+from certa.categorization import categorize_article
+from certa.group_events import timestamp, write_jsonl
+from certa.official_releases import digest
+from certa.overview import build
+from certa.overview_demo import event_page, export_demo
+from certa.overview_reader import catalogue, connect, get_event, log_html, packet, source_log
+from certa.overview_synthesis import enrich, grounded_notes
+from certa.overview_web import render
+from certa.trust_briefing import compose
+from certa.verify import verify
 
 
 def article(i, body, language="en"):

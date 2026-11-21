@@ -13,14 +13,27 @@ from unittest.mock import Mock, patch
 
 from build_preai import NoCoverage
 from generate_script import compose_draft, ScriptError, validate_daily
-from voxnews.daily import prepare
-from voxnews.delivery import compose_day
-from voxnews.daily_web import respond
-from voxnews.editions import personal_draft
-from voxnews.group_events import write_jsonl
-from voxnews.listeners import Conflict, check_in, delivered, previous_claims, record_delivery, revise, storage
-from voxnews.overview_reader import connect, get_event, Passages
-from voxnews.source_store import import_feeds
+from certa.daily import prepare
+from certa.delivery import compose_day
+from certa.daily_web import identity, respond
+from certa.editions import personal_draft
+from certa.group_events import write_jsonl
+from certa.listeners import Conflict, check_in, delivered, previous_claims, record_delivery, revise, storage
+from certa.overview_reader import connect, get_event, Passages
+from certa.source_store import import_feeds
+
+
+class BrowserIdentityTest(unittest.TestCase):
+    def test_previous_cookie_keeps_the_same_listener_after_the_rename(self):
+        token = "ab" * 32
+        old = SimpleNamespace(headers={"Cookie": f"voxlistener={token}"})
+        new = SimpleNamespace(headers={"Cookie": f"certa_listener={token}"})
+        self.assertEqual(identity(old), identity(new))
+        self.assertTrue(old.listener_cookie.startswith(f"certa_listener={token};"))
+        self.assertTrue(old.expire_legacy_listener)
+        both = SimpleNamespace(headers={"Cookie": f"certa_listener={token}; voxlistener={'ef' * 32}"})
+        self.assertEqual(identity(both), identity(new))
+        self.assertFalse(hasattr(both, "listener_cookie"))
 
 
 class DailyBackendTest(unittest.TestCase):
@@ -157,7 +170,7 @@ class DailyBackendTest(unittest.TestCase):
         with storage(directory) as db:
             profile=self.profile(db,"one","GB")
             self.edition(db,"one",profile,"2026-11-19")
-        with patch.dict("os.environ",{"VOXNEWS_CLOUD_ONLY":"1","VOXNEWS_PROVIDER":"openai"}):
+        with patch.dict("os.environ",{"CERTA_CLOUD_ONLY":"1","CERTA_PROVIDER":"openai"}):
             with self.assertRaisesRegex(Conflict,"isolated cloud demo"):
                 compose_day(directory,"one","2026-11-19")
 
@@ -185,8 +198,8 @@ class DailyBackendTest(unittest.TestCase):
                 compose_day(directory, "one", "2026-11-19")
             return compose_draft(draft, settings)
 
-        with patch("voxnews.delivery.database_path", return_value=self.catalogue):
-            with patch("voxnews.delivery.compose_draft", side_effect=compose_with_competing_request) as writer:
+        with patch("certa.delivery.database_path", return_value=self.catalogue):
+            with patch("certa.delivery.compose_draft", side_effect=compose_with_competing_request) as writer:
                 first = compose_day(directory, "one", "2026-11-19", profile["version"])
                 self.assertEqual(compose_day(directory, "one", "2026-11-19"), first)
                 self.assertEqual(writer.call_count, 1)
@@ -196,7 +209,7 @@ class DailyBackendTest(unittest.TestCase):
                     revise(db, "one", {**profile, "minutes": 5}, "explicit settings")
                 return compose_draft(draft, settings)
 
-            with patch("voxnews.delivery.compose_draft", side_effect=change_profile):
+            with patch("certa.delivery.compose_draft", side_effect=change_profile):
                 with self.assertRaisesRegex(Conflict, "changed during composition"):
                     compose_day(directory, "one", "2026-11-18", profile["version"])
         with storage(directory) as db:
@@ -223,8 +236,8 @@ class DailyBackendTest(unittest.TestCase):
             status, body, *kind = handler.reply.call_args.args
             return status, json.loads(body) if kind == ["application/json"] else body
 
-        with patch("voxnews.daily_web.database_path", return_value=self.catalogue), \
-                patch("voxnews.delivery.database_path", return_value=self.catalogue):
+        with patch("certa.daily_web.database_path", return_value=self.catalogue), \
+                patch("certa.delivery.database_path", return_value=self.catalogue):
             status, initial = request("/api/profile")
             self.assertEqual(status, 200)
             self.assertIsNone(initial["profile"])

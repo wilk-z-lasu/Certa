@@ -15,9 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def configure(output=None):
     providers.load_environment(cloud_demo=True)
-    os.environ["VOXNEWS_PROVIDER"] = "openai"
+    os.environ["CERTA_PROVIDER"] = "openai"
     output = Path(output or ROOT / "output" / "cloud-demo").resolve()
-    os.environ["VOXNEWS_OVERVIEW_DB"] = str(output / "event-overviews.sqlite3")
+    os.environ["CERTA_OVERVIEW_DB"] = str(output / "event-overviews.sqlite3")
     return output
 
 

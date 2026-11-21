@@ -7,11 +7,11 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from voxnews import providers
-from voxnews.official_releases import digest
-from voxnews.trust_briefing import DISCLOSURE, MONTHS
-from voxnews.usage import provider_response
-from voxnews.verify import write_atomic
+from certa import providers
+from certa.official_releases import digest
+from certa.trust_briefing import DISCLOSURE, MONTHS
+from certa.usage import provider_response
+from certa.verify import write_atomic
 
 
 ENV_FILE = Path(__file__).resolve().with_name(".env")

@@ -208,12 +208,12 @@ def html_view(script):
     player = (f'<audio controls src="{escape(script["audio"]["file"])}"></audio>' if "audio" in script
               else '<button id="all">Listen to briefing</button>')
     return (f'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
-            '<title>VoxNews | Verified briefing</title><style>'
+            '<title>Certa | Verified briefing</title><style>'
             'body{font:17px/1.5 system-ui;color:#192c36;background:#f8faf9;max-width:48rem;margin:3rem auto;padding:0 1.2rem}'
             'h1{font:2.4rem Georgia,serif;margin:.2rem 0}header,section{padding:1.2rem 0;border-bottom:1px solid #ccd6d5}'
             'button,summary{cursor:pointer}button{font:inherit;border:1px solid #35605a;border-radius:4px;padding:.3rem .8rem;background:white}'
             'section button{float:right;margin-left:1rem}.line{margin:0 0 .8rem}a{color:#07564c}small{color:#47575c}'
-            'audio{width:100%}</style><main><header><small>VoxNews</small>'
+            'audio{width:100%}</style><main><header><small>Certa</small>'
             f'<h1>{"Rates briefing" if script["profile"] == "rates" else "Headlines"}</h1>'
             f'<p id="disclosure" lang="{script["language"]}">{escape(script["disclosure"])}</p>{player}</header>'
             + ("".join(rows) or '<p>No approved claims for this selection.</p>') +

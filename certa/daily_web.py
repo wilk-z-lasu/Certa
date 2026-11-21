@@ -31,10 +31,13 @@ def identity(handler):
             cookie.load(header)
         except CookieError:
             pass
-    token = cookie["voxlistener"].value if "voxlistener" in cookie else ""
+    token = cookie["certa_listener"].value if "certa_listener" in cookie else ""
+    if "voxlistener" in cookie:
+        handler.expire_legacy_listener = True
     if not re.fullmatch(r"[a-f0-9]{64}", token):
-        token = token_hex(32)
-        handler.listener_cookie = f"voxlistener={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000"
+        previous = cookie.get("voxlistener")
+        token = previous.value if previous and re.fullmatch(r"[a-f0-9]{64}", previous.value) else token_hex(32)
+        handler.listener_cookie = f"certa_listener={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000"
     return digest(token)
 
 

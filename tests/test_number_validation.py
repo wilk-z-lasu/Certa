@@ -1,6 +1,6 @@
 import unittest
 
-from voxnews.number_validation import source_numbers_support, translation_numbers_match
+from certa.number_validation import source_numbers_support, translation_numbers_match
 
 
 class TranslationNumbersTest(unittest.TestCase):

@@ -69,14 +69,14 @@ def export(catalogue, directory, editions, output):
             panels.append(recording(db, catalogue, directory, name, edition, media))
             choices.append(f'<option value="{index}">{escape(name)}</option>')
     html = """<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>VoxNews · Recorded briefings</title><style>*{box-sizing:border-box}body{margin:auto;max-width:52rem;padding:2rem 1.25rem 4rem;
+<title>Certa · Recorded briefings</title><style>*{box-sizing:border-box}body{margin:auto;max-width:52rem;padding:2rem 1.25rem 4rem;
 color:#163d33;background:#f8f5eb;font:17px/1.55 system-ui}h1,h2{font:normal 2.3rem Georgia,serif}
 h1{border-bottom:2px solid;padding-bottom:.6em}select,button{font:inherit;padding:.35em .65em;color:inherit}
 label{display:block}audio{width:100%;margin:1.2em 0 .4em}ol{padding:0;list-style:none}ol>li{display:flex;align-items:start;
 gap:1em;border-top:1px solid #b9c4b7;padding:1em 0}button{cursor:pointer;border:1px solid #a4b7a6;border-radius:.3em}
 button[aria-current]{background:#153f33;color:white}summary,a{color:#125b42}summary{cursor:pointer}
 small{overflow-wrap:anywhere}details{font-size:.85em}</style>
-<main><h1>VoxNews</h1><label>Recorded listener <select id="chooser">""" + "".join(choices) + """</select></label>
+<main><h1>Certa</h1><label>Recorded listener <select id="chooser">""" + "".join(choices) + """</select></label>
 <audio controls preload="metadata"></audio>""" + "".join(panels) + """</main><script>
 const media=""" + json.dumps(media) + """;
 const player=document.querySelector('audio'),chooser=document.querySelector('#chooser'),sections=[...document.querySelectorAll('section')];

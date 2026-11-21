@@ -5,9 +5,9 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import Mock, patch
 
-from voxnews.editorial_rules import occurrences
-from voxnews.event_candidates import Article, CandidateIndex, reporting_origins
-from voxnews.luna import LunaJudge
+from certa.editorial_rules import occurrences
+from certa.event_candidates import Article, CandidateIndex, reporting_origins
+from certa.luna import LunaJudge
 
 
 def article(headline, excerpt, *, day=14, minute=0, language="en", feed="fixture", **metadata):
@@ -53,7 +53,7 @@ class EditorialRulesTests(unittest.TestCase):
         pairs = CandidateIndex(articles, None).signature_pairs(range(2))
         transport = Mock()
         with TemporaryDirectory() as tmp, patch.dict(
-            os.environ, {"VOXNEWS_CLOUD_ONLY": "1", "VOXNEWS_PROVIDER": "openai"}
+            os.environ, {"CERTA_CLOUD_ONLY": "1", "CERTA_PROVIDER": "openai"}
         ):
             judge = LunaJudge(Path(tmp) / "cache.sqlite3", transport=transport)
             decisions = judge.judge(list(pairs.values()), articles)

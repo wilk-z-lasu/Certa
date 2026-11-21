@@ -24,7 +24,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--include-audio", action="store_true", help="Include the mocked ElevenLabs adapter test")
     args = parser.parse_args()
-    with patch.dict(os.environ, {"VOXNEWS_PROVIDER": "openai", "VOXNEWS_CLOUD_ONLY": "0", "VOXNEWS_API_REQUESTS_PAUSED": "0"}):
+    with patch.dict(os.environ, {"CERTA_PROVIDER": "openai", "CERTA_CLOUD_ONLY": "0", "CERTA_API_REQUESTS_PAUSED": "0"}):
         discovered = unittest.defaultTestLoader.discover(str(ROOT / "tests"))
         suite = unittest.TestSuite(selected_tests(discovered, args.include_audio))
         result = unittest.TextTestRunner(verbosity=2).run(suite)

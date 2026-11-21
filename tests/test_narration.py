@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from voxnews import narration
+from certa import narration
 
 
 class NarrationRoutingTest(unittest.TestCase):
@@ -30,16 +30,16 @@ class NarrationRoutingTest(unittest.TestCase):
 
     def test_missing_voice_does_not_substitute_another_language(self):
         with self.assertRaisesRegex(ValueError, "No offline speech voice is installed for de"):
-            self.settings({"VOXNEWS_NARRATION": "offline"}, "de", voice="")
+            self.settings({"CERTA_NARRATION": "offline"}, "de", voice="")
 
     def test_paused_uses_offline_even_with_credentials_and_local_writer(self):
         result, _ = self.settings({"ELEVENLABS_API_KEY": "mock", "ELEVENLABS_VOICE_ID": "mock",
-                                   "VOXNEWS_PROVIDER": "ollama", "VOXNEWS_API_REQUESTS_PAUSED": "1"})
+                                   "CERTA_PROVIDER": "ollama", "CERTA_API_REQUESTS_PAUSED": "1"})
         self.assertEqual(result["provider"], "windows-speech")
 
     def test_cloud_only_never_resolves_a_local_voice(self):
-        result, speech = self.settings({"ELEVENLABS_VOICE_ID": "mock", "VOXNEWS_CLOUD_ONLY": "1",
-                                        "VOXNEWS_NARRATION": "offline"})
+        result, speech = self.settings({"ELEVENLABS_VOICE_ID": "mock", "CERTA_CLOUD_ONLY": "1",
+                                        "CERTA_NARRATION": "offline"})
         self.assertEqual(result["provider"], "elevenlabs")
         speech.assert_not_called()
 

@@ -1,18 +1,18 @@
-# VoxNews pitch handoff
+# Certa pitch handoff
 
 ## On the pitch laptop
 
-Open [the presentation](pitch/Certa%20Pitch.pptx) and the [recorded pitch](output/pitch/VoxNews.html). The HTML embeds audio and evidence references. The prepared editions support playback, transcript comparison and claim inspection from disk. Publisher and official-release links require network access. Use the local app for the live wildcard.
+Open [the presentation](pitch/Certa%20Pitch.pptx) and the [recorded pitch](output/pitch/Certa.html). The HTML embeds audio and evidence references. The prepared editions support playback, transcript comparison and claim inspection from disk. Publisher and official-release links require network access. Use the local app for the live wildcard.
 
 ```powershell
-$env:VOXNEWS_PROVIDER = 'openai'
-$env:VOXNEWS_API_REQUESTS_PAUSED = '1'
-$env:VOXNEWS_NARRATION = 'offline'
-python -m voxnews.daily --offline --date 2026-11-19
+$env:CERTA_PROVIDER = 'openai'
+$env:CERTA_API_REQUESTS_PAUSED = '1'
+$env:CERTA_NARRATION = 'offline'
+python -m certa.daily --offline --date 2026-11-19
 python app.py --port 50488
 ```
 
-The Windows launcher [Start-VoxNews.cmd](Start-VoxNews.cmd) also starts this app. On the pitch laptop, English uses Windows speech and German and Dutch use project-local eSpeak NG. All three were rendered through the application with paid requests paused. FFmpeg and ffprobe are on PATH.
+The Windows launcher [Start-Certa.cmd](Start-Certa.cmd) also starts this app. On the pitch laptop, English uses Windows speech and German and Dutch use project-local eSpeak NG. All three were rendered through the application with paid requests paused. FFmpeg and ffprobe are on PATH.
 
 1. In the app, choose **Maya** for technology or **Ellis** for rates and inflation. **Noor** listens in Dutch and **Jonas** in German. The standalone recordings retain their original edition labels, including **Macro morning** and **Tech & economy**.
 2. Open **Show transcript** and three **Claim evidence** entries. Each entry follows a sentence to the exact source passage and immutable event revision. Official figures also link to the dated observation used for verification.
@@ -32,7 +32,7 @@ The proposed customer is a publisher. Editors import licensed feeds, inspect hel
 Keep cloud secrets in the ignored `.env.demo`, never in `.env` for the local pitch. Launch in a separate shell with a funded OpenAI key and an explicit unpause only when the team authorizes charges. ElevenLabs is separately billed and needs its own key and voice ID for cloud audio. The hosted app uses port 50500, `output/cloud-demo/` and `user_data/cloud-demo/`. Existing authorized caches can reduce repeat charges.
 
 ```powershell
-python -m voxnews.demo --date 2026-11-19 --model-events 40
+python -m certa.demo --date 2026-11-19 --model-events 40
 python app.py --cloud-only --port 50500
 ```
 

@@ -17,13 +17,13 @@ def link(path, **params):
 
 def page(title, body):
     return ('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
-            f'<title>{escape(title)} | VoxNews</title><style>'
+            f'<title>{escape(title)} | Certa</title><style>'
             ':root{font:16px/1.5 system-ui;color:#18352e;background:#fafbf7}body{max-width:64rem;padding:1.5rem;margin:auto}'
             'nav,header,article,details{border-bottom:1px solid #ced7cf;padding:.85rem 0}nav{font-weight:700}'
             'h1,h2{font-family:Georgia,serif;font-weight:500;line-height:1.2}h1{font-size:2.4rem}'
             'a{color:#075c4f}li{margin:.35rem 0}summary{cursor:pointer}input,select,button{font:inherit;padding:.3rem}'
             'form{display:flex;gap:.7rem;align-items:end;flex-wrap:wrap}label{display:grid}small{color:#465c51}'
-            'article p{max-width:77ch}code{overflow-wrap:anywhere}</style><nav><a href="/">VoxNews</a> / Editorial research</nav>'
+            'article p{max-width:77ch}code{overflow-wrap:anywhere}</style><nav><a href="/">Certa</a> / Editorial research</nav>'
             f'<main>{body}</main></html>')
 
 

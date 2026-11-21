@@ -6,12 +6,12 @@ import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
 
-from voxnews.claim_models import ClaimModels
-from voxnews.group_events import timestamp, write_jsonl
-from voxnews.luna import ModelError
-from voxnews.official_releases import DEFAULT_PACK, ReleaseIndex, discover, ons_cells
-from voxnews.trust_briefing import compose, html_view, validate_script
-from voxnews.verify import verify
+from certa.claim_models import ClaimModels
+from certa.group_events import timestamp, write_jsonl
+from certa.luna import ModelError
+from certa.official_releases import DEFAULT_PACK, ReleaseIndex, discover, ons_cells
+from certa.trust_briefing import compose, html_view, validate_script
+from certa.verify import verify
 
 
 CUTOFF = timestamp("2026-11-20", allow_date=True)
@@ -234,11 +234,11 @@ class VerificationTests(unittest.TestCase):
         self.assertTrue(any("family enterprise" in c["wording"] and c["approved"] for c in event["claims"]))
         self.assertEqual(set(event["overview_claim_ids"]), approved)
         self.assertTrue(any(p["start"] > len(filler) for p in event["examined_passages"]))
-        from voxnews.categorize import run as categorize
-        from voxnews.overview import build
-        from voxnews.overview_reader import connect, get_event
-        from voxnews.editions import personal_draft
-        from voxnews.topic_rules import TOPICS
+        from certa.categorize import run as categorize
+        from certa.overview import build
+        from certa.overview_reader import connect, get_event
+        from certa.editions import personal_draft
+        from certa.topic_rules import TOPICS
         categories, verified, catalogue = (self.root / name for name in ("categories.jsonl", "verified.json", "events.db"))
         categorize(self.feeds, categories)
         verified.write_text(json.dumps(snap), encoding="utf-8")
@@ -256,7 +256,7 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(brief["events"][0]["revision"], detailed["events"][0]["revision"])
 
     def test_reported_numbers_require_exact_value_scale_and_official_routing(self):
-        from voxnews.verify import reported_number_anchors
+        from certa.verify import reported_number_anchors
         evidence = [{"quote": "Acme reported Q3 revenue of $3 million in 2026."}]
         self.assertTrue(reported_number_anchors("Acme's Q3 revenue was $3 million in 2026.", evidence))
         for wording in ("Acme's revenue was $4 million.", "Acme's revenue was $3 billion.",
@@ -266,7 +266,7 @@ class VerificationTests(unittest.TestCase):
                 self.assertFalse(reported_number_anchors(wording, evidence))
 
     def test_qualified_context_is_publishable_with_explicit_kind_and_attribution(self):
-        from voxnews.trust_briefing import spoken
+        from certa.trust_briefing import spoken
         cases = [
             ("forecast", "Acme expects revenue could reach $3 million.",
              "Acme expects revenue may reach $3 million.", True),
@@ -325,7 +325,7 @@ class VerificationTests(unittest.TestCase):
                 self.assertEqual(claim.get("evidence_state", claim["article_state"]), expected)
 
     def test_source_review_cannot_add_causality_basis_or_remove_uncertainty(self):
-        from voxnews.verify import prose_anchors
+        from certa.verify import prose_anchors
         for source, claim in [
             ("Chemical prices rose 3.9%.", "Chemical prices rose 3.9% annually."),
             ("The resignation has not ended inquiries.", "The resignation prompted inquiries."),

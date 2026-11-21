@@ -11,15 +11,15 @@ from unittest.mock import Mock, patch
 
 from build_preai import approved_claim
 from generate_script import compose_draft, framed_segments, ScriptError
-from voxnews import providers
-from voxnews.cloud_embeddings import CloudEncoder
-from voxnews.category_review import CategoryReview
-from voxnews.claim_models import ClaimModels
-from voxnews.luna import RequestsPaused, send_request
-from voxnews.daily import prepare
-from voxnews import demo
-from voxnews.event_embeddings import E5Encoder
-from voxnews.trust_briefing import spoken_figure
+from certa import providers
+from certa.cloud_embeddings import CloudEncoder
+from certa.category_review import CategoryReview
+from certa.claim_models import ClaimModels
+from certa.luna import RequestsPaused, send_request
+from certa.daily import prepare
+from certa import demo
+from certa.event_embeddings import E5Encoder
+from certa.trust_briefing import spoken_figure
 
 
 def cloud_event():
@@ -31,17 +31,17 @@ def cloud_event():
 
 class CloudDemoTests(unittest.TestCase):
     def setUp(self):
-        environment = patch.dict(os.environ, {"VOXNEWS_PROVIDER": "openai", "VOXNEWS_CLOUD_ONLY": "1",
-                                              "VOXNEWS_API_REQUESTS_PAUSED": "0"})
+        environment = patch.dict(os.environ, {"CERTA_PROVIDER": "openai", "CERTA_CLOUD_ONLY": "1",
+                                              "CERTA_API_REQUESTS_PAUSED": "0"})
         environment.start()
         self.addCleanup(environment.stop)
 
     def test_normal_and_pitch_launches_read_separate_settings(self):
         with TemporaryDirectory() as temp, patch.object(providers, "ROOT", Path(temp)):
             root = Path(temp)
-            (root / ".env").write_text("VOXNEWS_CLOUD_ONLY=1\nVOXNEWS_PROVIDER=ollama\n"
-                                       "VOXNEWS_API_REQUESTS_PAUSED=1\nELEVENLABS_API_KEY=app-speech\n")
-            (root / ".env.local").write_text("VOXNEWS_REVIEW_MODEL=app-review\n")
+            (root / ".env").write_text("CERTA_CLOUD_ONLY=1\nCERTA_PROVIDER=ollama\n"
+                                       "CERTA_API_REQUESTS_PAUSED=1\nELEVENLABS_API_KEY=app-speech\n")
+            (root / ".env.local").write_text("CERTA_REVIEW_MODEL=app-review\n")
             (root / ".env.demo").write_text("OPENAI_API_KEY=pitch-test\nELEVENLABS_VOICE_ID=pitch-voice\n")
             with patch.dict(os.environ, clear=True):
                 providers.load_environment()
@@ -58,7 +58,21 @@ class CloudDemoTests(unittest.TestCase):
                 self.assertEqual(providers.api_key(), "pitch-test")
                 self.assertEqual(providers.setting("ELEVENLABS_VOICE_ID"), "pitch-voice")
                 self.assertIsNone(providers.setting("ELEVENLABS_API_KEY"))
-                self.assertIsNone(providers.setting("VOXNEWS_REVIEW_MODEL"))
+                self.assertIsNone(providers.setting("CERTA_REVIEW_MODEL"))
+
+    def test_previous_environment_settings_keep_pause_and_respect_new_overrides(self):
+        with TemporaryDirectory() as tmp, patch.object(providers, "ROOT", Path(tmp)), patch.dict(os.environ, clear=True):
+            (Path(tmp) / ".env").write_text(
+                "VOXNEWS_API_REQUESTS_PAUSED=1\nVOXNEWS_PROVIDER=ollama\nCERTA_PROVIDER=openai\n"
+            )
+            self.assertTrue(providers.paid_requests_paused())
+            self.assertFalse(providers.local())
+            os.environ["VOXNEWS_PROVIDER"] = "ollama"
+            providers.load_environment()
+            self.assertTrue(providers.local())
+            self.assertTrue(providers.paid_requests_paused())
+            os.environ["CERTA_PROVIDER"] = "openai"
+            self.assertFalse(providers.local())
 
     def test_prepared_cloud_catalogue_is_browsable_without_a_key(self):
         with TemporaryDirectory() as temp, patch.object(providers, "ROOT", Path(temp)), patch.dict(os.environ, clear=True):
@@ -76,7 +90,7 @@ class CloudDemoTests(unittest.TestCase):
     def test_paused_hosted_writer_still_serves_the_normal_app(self):
         claim = {"claim_id": "c", "text": "A checked statement.", "sources": []}
         draft = {"events": [{**cloud_event(), "claims": [claim]}], "selection": {"language": "en"}}
-        with patch.dict(os.environ, {"VOXNEWS_CLOUD_ONLY": "0", "VOXNEWS_API_REQUESTS_PAUSED": "1",
+        with patch.dict(os.environ, {"CERTA_CLOUD_ONLY": "0", "CERTA_API_REQUESTS_PAUSED": "1",
                                      "OPENAI_API_KEY": "app-test"}), patch("generate_script.request_script") as writer:
             briefing = compose_draft(draft, {})
             self.assertEqual(briefing["provider"], "offline")
@@ -88,7 +102,7 @@ class CloudDemoTests(unittest.TestCase):
             providers.local_request({})
         with self.assertRaisesRegex(ValueError, "disabled"):
             E5Encoder(Path("unused"))([])
-        with patch.dict(os.environ, {"VOXNEWS_PROVIDER":"ollama"}):
+        with patch.dict(os.environ, {"CERTA_PROVIDER":"ollama"}):
             with self.assertRaisesRegex(ValueError, "requires"):
                 providers.local()
 
@@ -116,8 +130,8 @@ class CloudDemoTests(unittest.TestCase):
             self.assertFalse(output.exists())
 
     def test_credit_pause_blocks_new_requests_but_keeps_cached_results(self):
-        with patch.dict(os.environ,{"VOXNEWS_API_REQUESTS_PAUSED":"1"}), \
-                patch("voxnews.luna.urlopen") as network:
+        with patch.dict(os.environ,{"CERTA_API_REQUESTS_PAUSED":"1"}), \
+                patch("certa.luna.urlopen") as network:
             with self.assertRaises(RequestsPaused):
                 send_request({})
             with self.assertRaisesRegex(ScriptError,"paused"):
@@ -169,7 +183,7 @@ class CloudDemoTests(unittest.TestCase):
         record={"needs_review":True,"topics":["other_news"],"regions":["unknown"],
                 "evidence":{"topics":{"other_news":[]},"regions":{}}}
         option={"facet":"topics","label":"technology_ai","quote":"An AI system.","start":0,"end":13}
-        with sqlite3.connect(":memory:") as db, patch("voxnews.category_review.candidates",return_value=[option]):
+        with sqlite3.connect(":memory:") as db, patch("certa.category_review.candidates",return_value=[option]):
             model=CategoryReview(db,transport=transport)
             result=model.apply({},record)
             self.assertEqual(result["topics"],["technology_ai"])

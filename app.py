@@ -11,11 +11,11 @@ from urllib.parse import parse_qs, urlsplit
 from build_preai import NoCoverage, category_options, database_path, make_draft, preferences
 from generate_script import ScriptError, compose_draft, save_briefing
 from md_to_speech import generate_news_audio
-from voxnews import daily_web
-from voxnews import providers
-from voxnews.editions import picker_options
-from voxnews.listeners import people, persona_profile, storage
-from voxnews.topic_rules import TOPIC_LABELS
+from certa import daily_web
+from certa import providers
+from certa.editions import picker_options
+from certa.listeners import people, persona_profile, storage
+from certa.topic_rules import TOPIC_LABELS
 
 DIRECTORY = Path(__file__).resolve().parent / "user_data"
 # The CLI and legacy audio route also use the latest script in this directory.
@@ -24,7 +24,7 @@ BRIEFING_FILES = Lock()
 
 PAGE = r"""<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoxNews · Your daily briefing</title>
+<title>Certa · Your daily briefing</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f6f5ee;color:#193b36;font:1rem/1.5 system-ui}
 [hidden]{display:none!important}
@@ -221,7 +221,7 @@ button:disabled{background:#d6ddd5;color:#49584b;cursor:default}
 .topic-weights { padding-block: 12px; }
 #picker :focus-visible { outline: 3px solid #27664d; outline-offset: 3px; }
 </style>
-<main><header>VoxNews</header><section id="picker"><h1>What interests you today?</h1>
+<main><header>Certa</header><section id="picker"><h1>What interests you today?</h1>
 <!--TOPIC_FORM-->
 </section>
 <section id="failed" hidden>
@@ -245,7 +245,7 @@ button:disabled{background:#d6ddd5;color:#49584b;cursor:default}
     </div>
     <div class="briefing-actions">
       <button type="button" id="toggle-transcript" aria-controls="transcript" aria-expanded="false" hidden>Show transcript</button>
-      <a id="download-audio" download="VoxNews-briefing.wav" hidden>Download WAV</a>
+      <a id="download-audio" download="Certa-briefing.wav" hidden>Download WAV</a>
       <button type="button" id="retry-audio" hidden>Retry audio</button>
       <button type="button" id="listen" hidden>Generate audio</button>
       <button type="button" id="edit">Change interests</button>
@@ -711,6 +711,8 @@ class Picker(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         if getattr(self, "listener_cookie", None):
             self.send_header("Set-Cookie", self.listener_cookie)
+        if getattr(self, "expire_legacy_listener", False):
+            self.send_header("Set-Cookie", "voxlistener=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
         self.send_header("Content-Length", str(len(data)))
         try:
             self.end_headers()
@@ -722,13 +724,13 @@ class Picker(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlsplit(self.path)
         if providers.cloud_only() and url.path in {"/", "/picker", "/categories", "/api/runtime"}:
-            from voxnews.demo import status
+            from certa.demo import status
             runtime = status()
             if url.path == "/api/runtime":
                 return self.reply(200, json.dumps(runtime), "application/json")
             if not runtime["ready"]:
                 return self.reply(503, '<!doctype html><html lang="en"><meta charset="utf-8">'
-                    '<title>VoxNews cloud demo</title><main><h1>Cloud-only demo</h1><p>'
+                    '<title>Certa cloud demo</title><main><h1>Cloud-only demo</h1><p>'
                     + escape(runtime["message"]) + '</p></main></html>', "text/html")
         if url.path.startswith(("/api/","/evidence/")):
             return daily_web.respond(self,DIRECTORY)
@@ -853,7 +855,7 @@ if __name__ == "__main__":
     parser.add_argument("--cloud-only",action="store_true",help="Use the isolated cloud-only demo")
     args=parser.parse_args()
     if args.cloud_only:
-        from voxnews.demo import configure
+        from certa.demo import configure
         configure()
         DIRECTORY = DIRECTORY / "cloud-demo"
     else:

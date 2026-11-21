@@ -25,19 +25,19 @@ Add-Type -AssemblyName System.Speech
 $speech = New-Object System.Speech.Synthesis.SpeechSynthesizer
 try {
     $voices = $speech.GetInstalledVoices() | Where-Object {
-        $_.Enabled -and $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq $env:VOXNEWS_SPEECH_LANGUAGE
+        $_.Enabled -and $_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq $env:CERTA_SPEECH_LANGUAGE
     } | Sort-Object { $_.VoiceInfo.Id }
     $voice = $voices | Select-Object -First 1
     if ($null -eq $voice) { exit 3 }
-    if (!$env:VOXNEWS_SPEECH_TEXT) {
+    if (!$env:CERTA_SPEECH_TEXT) {
         [Console]::WriteLine($voice.VoiceInfo.Id)
         exit
     }
-    if ($voice.VoiceInfo.Id -ne $env:VOXNEWS_SPEECH_VOICE) { exit 3 }
+    if ($voice.VoiceInfo.Id -ne $env:CERTA_SPEECH_VOICE) { exit 3 }
     $speech.SelectVoice($voice.VoiceInfo.Name)
-    $speech.Rate = [int]$env:VOXNEWS_SPEECH_RATE
-    $speech.SetOutputToWaveFile($env:VOXNEWS_SPEECH_WAV)
-    $speech.Speak([IO.File]::ReadAllText($env:VOXNEWS_SPEECH_TEXT))
+    $speech.Rate = [int]$env:CERTA_SPEECH_RATE
+    $speech.SetOutputToWaveFile($env:CERTA_SPEECH_WAV)
+    $speech.Speak([IO.File]::ReadAllText($env:CERTA_SPEECH_TEXT))
 } finally {
     $speech.Dispose()
 }
@@ -54,8 +54,8 @@ def espeak_command():
 
 
 def windows_speech(language, **paths):
-    env = {**os.environ, "VOXNEWS_SPEECH_LANGUAGE": language}
-    env.update({"VOXNEWS_SPEECH_" + key.upper(): str(value) for key, value in paths.items()})
+    env = {**os.environ, "CERTA_SPEECH_LANGUAGE": language}
+    env.update({"CERTA_SPEECH_" + key.upper(): str(value) for key, value in paths.items()})
     return subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_SPEECH],
         env=env, capture_output=True, text=True, timeout=60,
@@ -63,9 +63,9 @@ def windows_speech(language, **paths):
 
 
 def narration_mode():
-    mode = providers.setting("VOXNEWS_NARRATION", "auto").lower()
+    mode = providers.setting("CERTA_NARRATION", "auto").lower()
     if mode not in {"auto", "offline", "elevenlabs"}:
-        raise ValueError("VOXNEWS_NARRATION must be auto, offline, or elevenlabs.")
+        raise ValueError("CERTA_NARRATION must be auto, offline, or elevenlabs.")
     return "elevenlabs" if providers.cloud_only() else mode
 
 

@@ -11,10 +11,10 @@ try:
 except ImportError:
     np = None
 
-from voxnews.event_candidates import Article, CandidateIndex, reporting_origins
-from voxnews.event_groups import form_groups
-from voxnews.group_events import run
-from voxnews.luna import Decision, LunaJudge, ModelError
+from certa.event_candidates import Article, CandidateIndex, reporting_origins
+from certa.event_groups import form_groups
+from certa.group_events import run
+from certa.luna import Decision, LunaJudge, ModelError
 
 
 def fixture(article_id, headline, day="2026-11-13", hour="12:00", **extra):

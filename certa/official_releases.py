@@ -146,7 +146,7 @@ def archive(db, issuer, url, refresh=False):
             safe_url(newurl, hosts)
             return super().redirect_request(req, fp, code, msg, headers, newurl)
 
-    request = Request(url, headers={"User-Agent": "VoxNews release verifier/1.0"})
+    request = Request(url, headers={"User-Agent": "Certa release verifier/1.0"})
     try:
         with build_opener(OfficialRedirect()).open(request, timeout=25) as response:
             body = response.read(16_000_001)

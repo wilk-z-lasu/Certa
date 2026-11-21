@@ -27,11 +27,11 @@ def index_html(events, recordings):
         rows.append(f'<li><a href="{event_page(e["event_id"])}">{escape(e["title"])}</a> '
                     f'<small>{topics}{issue}</small></li>')
     return ('''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>VoxNews | Offline demo</title><style>
+<title>Certa | Offline demo</title><style>
 body{font:17px/1.5 system-ui;color:#183530;background:#fafbf8;max-width:60rem;margin:3rem auto;padding:0 1rem}
 h1,h2{font-family:Georgia,serif}h1{font-size:2.6rem}a{color:#065e56}li{margin:.55rem 0}
 small{color:#495854}input{font:inherit;padding:.4rem;max-width:90%}
-</style><main><h1>VoxNews</h1><h2>Listen to a briefing</h2><ul>'''
+</style><main><h1>Certa</h1><h2>Listen to a briefing</h2><ul>'''
             + "".join(links)
             + f'</ul><h2>Event source logs</h2><p>{len(events):,} events. Open a claim to inspect its sources. '
               'Links to original publications require internet access.</p>'

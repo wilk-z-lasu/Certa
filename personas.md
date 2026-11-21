@@ -1,6 +1,6 @@
-# VoxNews listener personas
+# Certa listener personas
 
-Fictional respondents to the VoxNews onboarding quiz. The voice descriptions are prompts for ElevenLabs Voice Design. Each intro uses a separate synthetic voice saved in ElevenLabs as `VoxNews · <persona name>`.
+Fictional respondents to the Certa onboarding quiz. The voice descriptions are prompts for ElevenLabs Voice Design. Each intro uses the synthetic voice identified by the ElevenLabs voice ID under that listener’s name.
 
 ## Maya Chen
 

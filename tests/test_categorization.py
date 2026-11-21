@@ -3,8 +3,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from voxnews.categorization import categorize_article
-from voxnews.categorize import run
+from certa.categorization import categorize_article
+from certa.categorize import run
 
 
 def article(headline: str, **fields) -> dict:

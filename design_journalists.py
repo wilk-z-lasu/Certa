@@ -40,7 +40,7 @@ def provision():
                           "text": "Good morning. Here is what we know so far. Our reporters have been looking at the figures, and one detail stands out."}, key)
             voice["preview_id"] = result["previews"][0]["generated_voice_id"]
             save()
-        result = post("", {"voice_name": "VoxNews Desk - " + voice["name"], "voice_description": prompt,
+        result = post("", {"voice_name": "Certa Desk - " + voice["name"], "voice_description": prompt,
                            "generated_voice_id": voice["preview_id"]}, key)
         voice["voice_id"] = result["voice_id"]
         del voice["preview_id"]

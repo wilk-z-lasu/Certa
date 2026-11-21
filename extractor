@@ -2,8 +2,8 @@
 """Export the canonical topic IDs for tools that consume a line-based list."""
 from pathlib import Path
 
-from voxnews.topic_rules import TOPICS
-from voxnews.verify import write_atomic
+from certa.topic_rules import TOPICS
+from certa.verify import write_atomic
 
 
 if __name__ == "__main__":

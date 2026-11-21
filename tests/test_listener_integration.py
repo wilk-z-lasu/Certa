@@ -13,10 +13,10 @@ from unittest.mock import Mock, patch
 import app
 from build_preai import build_preai, make_draft
 from generate_script import request_script, ScriptError
-from voxnews.categorize import run as categorize
-from voxnews.group_events import timestamp, write_jsonl
-from voxnews.overview import build
-from voxnews.verify import verify
+from certa.categorize import run as categorize
+from certa.group_events import timestamp, write_jsonl
+from certa.overview import build
+from certa.verify import verify
 
 
 class ListenerIntegrationTest(unittest.TestCase):
@@ -29,7 +29,7 @@ class ListenerIntegrationTest(unittest.TestCase):
         self.listener.mkdir()
         (self.listener / "UserInfo.md").write_text("Two minutes of markets news.", encoding="utf-8")
         for context in (patch.object(app, "DIRECTORY", self.listener),
-                        patch.dict(os.environ, {"VOXNEWS_OVERVIEW_DB": str(self.db)}),
+                        patch.dict(os.environ, {"CERTA_OVERVIEW_DB": str(self.db)}),
                         patch("generate_script.api_key", return_value=None)):
             context.start()
             self.addCleanup(context.stop)

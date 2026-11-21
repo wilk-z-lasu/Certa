@@ -1,16 +1,15 @@
 """Select approved claims from the current editorial catalogue for a listener."""
 import json
-import os
 from contextlib import closing
 from pathlib import Path
 
-from voxnews.geography import COUNTRIES
-from voxnews import providers
-from voxnews.official_releases import safe_url
-from voxnews.overview_reader import catalogue, connect, get_event
-from voxnews.topic_rules import TOPICS, TOPIC_LABELS
-from voxnews.trust_briefing import DISCLOSURE, spoken_figure
-from voxnews.verify import write_atomic
+from certa.geography import COUNTRIES
+from certa import providers
+from certa.official_releases import safe_url
+from certa.overview_reader import catalogue, connect, get_event
+from certa.topic_rules import TOPICS, TOPIC_LABELS
+from certa.trust_briefing import DISCLOSURE, spoken_figure
+from certa.verify import write_atomic
 
 
 ROOT = Path(__file__).resolve().parent
@@ -23,7 +22,7 @@ class NoCoverage(ValueError):
 
 def database_path():
     default = ROOT / "output" / ("cloud-demo" if providers.cloud_only() else "") / "event-overviews.sqlite3"
-    return Path(os.environ.get("VOXNEWS_OVERVIEW_DB") or default)
+    return Path(providers.setting("CERTA_OVERVIEW_DB") or default)
 
 
 def preferences(topics, region=None, language="en"):

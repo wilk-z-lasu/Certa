@@ -9,9 +9,9 @@ from urllib.error import URLError
 
 import generate_script
 import md_to_speech
-from voxnews import providers
-from voxnews.cost import inference, receipt_report, report
-from voxnews.usage import preparation_attempt, provider_response, writer_attempt
+from certa import providers
+from certa.cost import inference, receipt_report, report
+from certa.usage import preparation_attempt, provider_response, writer_attempt
 
 
 class CostAccountingTests(unittest.TestCase):
@@ -59,8 +59,8 @@ class CostAccountingTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             directory = Path(tmp)
             with (
-                patch.dict(os.environ, {"VOXNEWS_PROVIDER": "openai", "VOXNEWS_CLOUD_ONLY": "0",
-                                        "VOXNEWS_API_REQUESTS_PAUSED": "0", "VOXNEWS_COMPOSITION_MODEL": "writer"}),
+                patch.dict(os.environ, {"CERTA_PROVIDER": "openai", "CERTA_CLOUD_ONLY": "0",
+                                        "CERTA_API_REQUESTS_PAUSED": "0", "CERTA_COMPOSITION_MODEL": "writer"}),
                 patch.object(generate_script, "urlopen",
                              return_value=closing(BytesIO(b'{"status":"incomplete","usage":{"input_tokens":100,"output_tokens":10}}'))),
                 self.assertRaises(generate_script.ScriptError),
@@ -74,17 +74,17 @@ class CostAccountingTests(unittest.TestCase):
             self.assertAlmostEqual(receipt["estimated_writer_provider_usd"], .0006)
 
     def test_paid_speech_pause_applies_to_ollama_and_to_retries(self):
-        with patch.dict(os.environ, {"VOXNEWS_PROVIDER": "ollama", "VOXNEWS_CLOUD_ONLY": "0",
-                                    "VOXNEWS_API_REQUESTS_PAUSED": "1"}):
+        with patch.dict(os.environ, {"CERTA_PROVIDER": "ollama", "CERTA_CLOUD_ONLY": "0",
+                                    "CERTA_API_REQUESTS_PAUSED": "1"}):
             providers.require_requests()
             with patch.object(md_to_speech.urllib.request, "urlopen") as send:
                 with self.assertRaisesRegex(ValueError, "paused"):
                     md_to_speech.synthesize_chunk("test", "key", "voice", "model", "mp3", 1, 1)
                 send.assert_not_called()
-            os.environ["VOXNEWS_API_REQUESTS_PAUSED"] = "0"
+            os.environ["CERTA_API_REQUESTS_PAUSED"] = "0"
 
             def pause_after_failure(*args, **kwargs):
-                os.environ["VOXNEWS_API_REQUESTS_PAUSED"] = "1"
+                os.environ["CERTA_API_REQUESTS_PAUSED"] = "1"
                 raise URLError("simulated failure")
 
             with (patch.object(md_to_speech.urllib.request, "urlopen", side_effect=pause_after_failure) as send,

@@ -3,8 +3,8 @@
 ## Rules-only full-feed run
 
 ```powershell
-python -m voxnews.daily --offline --date 2026-11-19 --lookback-days 366 --output-dir output/grouping-evaluation
-python -m voxnews.evaluate grouping output/grouping-evaluation/days/2026-11-19/events.jsonl
+python -m certa.daily --offline --date 2026-11-19 --lookback-days 366 --output-dir output/grouping-evaluation
+python -m certa.evaluate grouping output/grouping-evaluation/days/2026-11-19/events.jsonl
 ```
 
 The full window contains 1,740 unique article memberships, 1,548 reporting origins, and 1,540 events (100 grouped, 1,440 singletons). The 366-day lookback includes older Zacks rows. It is an evaluation window. The briefing uses its configured editorial window. The rules-only run made zero model calls.
@@ -23,7 +23,7 @@ The completed full-feed run also preserves every article ID exactly once. It pro
 
 The backend integration sample contains 22 source articles from all six feeds and 20 reporting origins. E5 candidate selection and the installed `qwen3.5:0.8b-mlx` grouping model produced 15 events. Final memberships matched all six labeled positive pairs and all five labeled negative pairs in `examples/manual-event-reference.json`. The positive pairs include the Outlook outage, US producer prices, Intel lawsuit and Deutsche Bank leak. The negative examples include distinct occurrences involving the same company and releases from different countries or months.
 
-These are targeted manual references used during development. The official answer key and a separate holdout evaluation remain unavailable. The evaluation can be rerun with `python3 -m voxnews.evaluate grouping output/editorial-evaluation/run/days/2026-11-19/events.jsonl`. The older candidate and hosted-cost estimates below describe earlier runs.
+These are targeted manual references used during development. The official answer key and a separate holdout evaluation remain unavailable. The evaluation can be rerun with `python3 -m certa.evaluate grouping output/editorial-evaluation/run/days/2026-11-19/events.jsonl`. The older candidate and hosted-cost estimates below describe earlier runs.
 
 ## Full-corpus candidate run
 

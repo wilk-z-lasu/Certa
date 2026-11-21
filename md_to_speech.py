@@ -22,8 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from voxnews import providers
-from voxnews.providers import load_dotenv
+from certa import providers
+from certa.providers import load_dotenv
 
 DEFAULT_MODEL_ID = "eleven_multilingual_v2"
 DEFAULT_OUTPUT_FORMAT = "mp3_44100_128"

@@ -1,10 +1,10 @@
-# VoxNews build plan
+# Certa build plan
 
 Build a personalized daily overview from reusable event overviews, then deliver it as text and audio. Categorize source stories, group coverage of the same event with a small model, and use a larger model to check the evidence and create an event overview before personalizing the result for listeners.
 
 The [local pitch workflow](README.md#run-the-local-pitch) connects source import, event grouping, checked dossiers, personal editions, audio and feedback through SQLite stores. The default pitch uses local grouping rules, reviewed sentence templates and offline speech. The optional hosted mode has its own credentials, data and port. Requirements come from the [challenge brief](Sourcera-Track-Description.md), [project instructions](AGENTS.md) and [dataset notes](liquid-briefing-data/README.txt).
 
-The [handoff](HANDOFF.md) links the [recorded pitch](output/pitch/VoxNews.html), [PowerPoint deliverable](pitch/Certa%20Pitch.pptx), [cost report](pitch/cost-report.json) and [local audio audit](AUDIO_AUDIT.md). The full rules-only run processed 1,740 articles into 1,540 events and approved 15 claims with zero paid model calls. The pitch laptop generated fresh audio in English, German and Dutch. The organizer's answer key and listener profiles remain unavailable. The earlier hosted run is historical and hosted end-to-end acceptance remains open.
+The [handoff](HANDOFF.md) links the [recorded pitch](output/pitch/Certa.html), [PowerPoint deliverable](pitch/Certa%20Pitch.pptx), [cost report](pitch/cost-report.json) and [local audio audit](AUDIO_AUDIT.md). The full rules-only run processed 1,740 articles into 1,540 events and approved 15 claims with zero paid model calls. The pitch laptop generated fresh audio in English, German and Dutch. The organizer's answer key and listener profiles remain unavailable. The earlier hosted run is historical and hosted end-to-end acceptance remains open.
 
 ## Pipeline and terminology
 
@@ -183,5 +183,5 @@ The MVP is ready when all P0 tasks work together and all P1 evaluation and deliv
 - Trust is explained per claim through evidence states, source independence, and visible disagreements. Source agreement alone does not establish truth.
 - Listener setup is structured. Daily feedback automatically changes the next briefing, with visible, editable, reversible updates.
 - The MVP uses an in-application daily check-in and historical dates to demonstrate adaptation; production scheduling belongs to P03.
-- A reviewed public official-observation pack is bundled under `voxnews/official/`. The organizers' release bundle, supplied listener profiles and official answer key remain unavailable. Label the manual grouping reference and custom listener examples accordingly.
+- A reviewed public official-observation pack is bundled under `certa/official/`. The organizers' release bundle, supplied listener profiles and official answer key remain unavailable. Label the manual grouping reference and custom listener examples accordingly.
 - The local pitch selects offline speech. FFmpeg and ffprobe handle conversion and measurement. Verify the installed Windows voice or eSpeak NG for each spoken language. The hosted path uses ElevenLabs and requires separate account access, pricing and voice configuration.

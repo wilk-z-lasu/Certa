@@ -21,10 +21,17 @@ HOSTED = {
     "composition": "gpt-6.2-astra",
 }
 ROOT = Path(__file__).resolve().parents[1]
+LEGACY_PREFIX = "VOXNEWS_"
+
+
+def environment_value(name, default=None):
+    if name.startswith("CERTA_") and name not in os.environ:
+        return os.getenv(LEGACY_PREFIX + name.removeprefix("CERTA_"), default)
+    return os.getenv(name, default)
 
 
 def cloud_only():
-    return os.getenv("VOXNEWS_CLOUD_ONLY", "0").lower() in {"1", "true", "yes"}
+    return environment_value("CERTA_CLOUD_ONLY", "0").lower() in {"1", "true", "yes"}
 
 
 def environment_files():
@@ -32,6 +39,8 @@ def environment_files():
 
 
 def file_settings(path):
+    legacy = {}
+    configured = set()
     if path.is_file():
         for line in path.read_text(encoding="utf-8-sig").splitlines():
             line = line.strip().removeprefix("export ")
@@ -41,24 +50,34 @@ def file_settings(path):
             value = value.strip()
             if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
                 value = value[1:-1]
-            yield key.strip(), value
+            key = key.strip()
+            if key.startswith(LEGACY_PREFIX):
+                legacy.setdefault("CERTA_" + key.removeprefix(LEGACY_PREFIX), value)
+            else:
+                configured.add(key)
+                yield key, value
+    for key, value in legacy.items():
+        if key not in configured:
+            yield key, value
 
 
 def load_dotenv(path):
     for key, value in file_settings(path):
-        os.environ.setdefault(key, value)
+        if environment_value(key) is None:
+            os.environ[key] = value
 
 
 def load_environment(*, cloud_demo=False):
     # Select the mode before loading credentials, including on machines with older .env files.
-    os.environ["VOXNEWS_CLOUD_ONLY"] = "1" if cloud_demo else "0"
+    os.environ["CERTA_CLOUD_ONLY"] = "1" if cloud_demo else "0"
     for path in environment_files():
         load_dotenv(path)
 
 
 def setting(name, default=None):
-    if name in os.environ:
-        return os.environ[name]
+    value = environment_value(name)
+    if value is not None:
+        return value
     for path in environment_files():
         for key, value in file_settings(path):
             if key == name:
@@ -71,7 +90,7 @@ def requests_paused():
 
 
 def paid_requests_paused():
-    return setting("VOXNEWS_API_REQUESTS_PAUSED", "1" if cloud_only() else "0").lower() in {"1", "true", "yes"}
+    return setting("CERTA_API_REQUESTS_PAUSED", "1" if cloud_only() else "0").lower() in {"1", "true", "yes"}
 
 
 def require_requests():
@@ -89,11 +108,11 @@ def api_key():
 
 
 def local():
-    value = setting("VOXNEWS_PROVIDER", "openai")
+    value = setting("CERTA_PROVIDER", "openai")
     if value not in {"openai", "ollama"}:
-        raise ValueError("VOXNEWS_PROVIDER must be openai or ollama")
+        raise ValueError("CERTA_PROVIDER must be openai or ollama")
     if cloud_only() and value != "openai":
-        raise ValueError("Cloud-only demo requires VOXNEWS_PROVIDER=openai. Local models are disabled.")
+        raise ValueError("Cloud-only demo requires CERTA_PROVIDER=openai. Local models are disabled.")
     return value == "ollama"
 
 
@@ -101,7 +120,7 @@ def model(role):
     fallback = (LOCAL if local() else HOSTED)[role]
     if role == "composition" and not local():
         fallback = setting("OPENAI_MODEL") or fallback
-    name = setting("VOXNEWS_" + role.upper() + "_MODEL") or fallback
+    name = setting("CERTA_" + role.upper() + "_MODEL") or fallback
     if cloud_only() and (name in LOCAL.values() or name.endswith("-mlx")):
         raise ValueError(f"Cloud-only demo cannot use the local {role} model {name!r}.")
     return name
