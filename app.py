@@ -12,6 +12,7 @@ from build_preai import NoCoverage, category_options, database_path, make_draft,
 from generate_script import ScriptError, compose_draft, save_briefing
 from md_to_speech import generate_news_audio
 from voxnews import daily_web
+from voxnews import providers
 from voxnews.editions import picker_options
 from voxnews.listeners import current, storage
 from voxnews.topic_rules import TOPIC_LABELS
@@ -570,6 +571,12 @@ def picker_page(options, region, language, selected, profile=None):
         if language in {"de","nl"} and not region:
             details += '<p>Suggested local coverage: ' + ("Germany" if language=="de" else "Netherlands") + '. Choose it under Coverage area or keep All regions.</p>'
         save = '<button type="button" id="save-profile">Save preferences</button>'
+        details += ('<p>The briefing date is the reporting cutoff. It may include earlier articles. '
+                    'Publication dates are labeled separately from event dates and data periods such as October.</p>')
+        if providers.cloud_only():
+            details += '<p>Cloud-only demo · OpenAI</p>'
+            if providers.requests_paused():
+                details += '<p>New briefing generation is paused to preserve API credits. Cached news and evidence remain available.</p>'
     form = f"""<form method="get" data-daily="{str(daily).lower()}" data-version="{profile.get("version",0)}">
 {extra}
 <label>Briefing language <select id="language" name="language">{languages}</select></label>
@@ -595,6 +602,15 @@ class Picker(BaseHTTPRequestHandler):
 
     def do_GET(self):
         url = urlsplit(self.path)
+        if providers.cloud_only() and url.path in {"/", "/picker", "/categories", "/api/runtime"}:
+            from voxnews.demo import status
+            runtime = status()
+            if url.path == "/api/runtime":
+                return self.reply(200, json.dumps(runtime), "application/json")
+            if not runtime["ready"]:
+                return self.reply(503, '<!doctype html><html lang="en"><meta charset="utf-8">'
+                    '<title>VoxNews cloud demo</title><main><h1>Cloud-only demo</h1><p>'
+                    + escape(runtime["message"]) + '</p><p>Refresh when preparation completes.</p></main></html>', "text/html")
         if url.path.startswith(("/api/","/evidence/")):
             return daily_web.respond(self,DIRECTORY)
         if url.path not in {"/", "/picker", "/categories"}:
@@ -712,7 +728,12 @@ if __name__ == "__main__":
     load_dotenv(ENV_FILE)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port",type=int,default=0,help="Local listening port; default chooses an available port")
+    parser.add_argument("--cloud-only",action="store_true",help="Use the isolated cloud-only demo")
     args=parser.parse_args()
+    if args.cloud_only or providers.cloud_only():
+        from voxnews.demo import configure, listener_directory
+        configure()
+        DIRECTORY = listener_directory()
     with ThreadingHTTPServer(("127.0.0.1", args.port), Picker) as server:
         print(f"Open http://127.0.0.1:{server.server_port} in your browser.", flush=True)
         server.serve_forever()

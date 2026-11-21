@@ -1,5 +1,24 @@
 # VoxNews
 
+## Run the cloud-only demo
+
+The current handoff preserves credits with paid requests paused. See [HANDOFF.md](HANDOFF.md) for cached results, deferred work and restart commands. Set `VOXNEWS_API_REQUESTS_PAUSED=0` only when a funded key is available; the example environment defaults to paused.
+
+Save `OPENAI_API_KEY=your_key` in the ignored `.env` file. The name uses underscores. Keys stay on the backend. These commands use a separate catalogue and listener history.
+
+```sh
+python3 -m voxnews.demo --date 2026-11-19 --model-events 40
+python3 app.py --cloud-only --port 50488
+```
+
+The demo uses [OpenAI embeddings](https://developers.openai.com/api/docs/models/text-embedding-3-small), [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) for category review, grouping and extraction, and [GPT-6.2 Astra](https://developers.openai.com/api/docs/models/gpt-6.2-astra) for evidence review, broad event overviews, translation review and daily composition. Role model IDs remain configurable. It makes no Ollama or local E5 inference calls. A missing key or failed cloud request cannot trigger a local or offline fallback. Cloud usage is billable and recorded by stage, including embeddings.
+
+Preparation writes to `output/cloud-demo/`. Listener deliveries use `user_data/cloud-demo/`. Existing profile settings are carried over, while earlier generated briefings, feedback and local-model catalogues stay in their original archive. Eligible event records must carry cloud provenance for embeddings, grouping and the event-checking models. The writer also checks provenance, and saved editions from other modes cannot be replayed as cloud results. `/api/runtime` reports the active mode and preparation status without exposing credentials. `VOXNEWS_CLOUD_ONLY=1` in `.env` makes a normal app launch select this demo too.
+
+The selected date is the reporting cutoff. With the default seven-day window, a November 19 briefing can include an article published on November 16 that recaps a November 5 decision. October inflation figures describe the measurement period. New transcripts say “Reporting published on” to distinguish the article date, and label headline CPI separately from core CPI excluding energy, food, alcohol and tobacco. Year-on-year and month-on-month rates remain separate. Use `--lookback-days 1` when preparing a catalogue restricted to articles published on the selected UTC day. Older saved editions retain their original rendering.
+
+The 40-event checking limit is explicit and can be increased. A cloud build is required before the app serves this demo. While preparation is incomplete it displays a status page and excludes the earlier local results. Speech generation remains an explicit action and ElevenLabs verification is deferred.
+
 ## Run the daily backend
 
 Use Python 3.10 or newer. From the repository root, these commands import all six feeds and prepare two historical days using the bundled official observations. The dates are the last included UTC calendar days. Each window ends at midnight the following day.

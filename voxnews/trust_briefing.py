@@ -48,7 +48,7 @@ def attributed_wording(kind, publisher, text, lang):
     return f"{publisher} {labels[lang][kind]}. {text}"
 
 
-def spoken(claim, lang):
+def spoken(claim, lang, *, version=1):
     if not claim["approved"] or claim["article_state"] != "supported" or not claim["support"]:
         raise ValueError("segment lacks approved article evidence")
     if claim["kind"] != "official_figure":
@@ -61,13 +61,22 @@ def spoken(claim, lang):
     if claim["official_state"] != "matched" or not claim["official"] or any(
             cell["value"] != f["value"] or cell["unit"] != f["unit"] for cell in claim["official"]):
         raise ValueError("official figure has inconsistent evidence")
-    return spoken_figure(f, lang)
+    return spoken_figure(f, lang, version=version)
 
 
-def spoken_figure(f, lang):
+def spoken_figure(f, lang, *, version=1):
     """Render an already approved official observation in the listener's language."""
     value = f["value"] if lang == "en" else f["value"].replace(".", ",")
     country, measure = COUNTRY[lang][f["geo"]], LABEL[lang][f["measure"]]
+    if version >= 2:
+        measure = {
+            "en": {"CPI": "headline consumer price inflation covering all CPI items",
+                   "core CPI": "core consumer price inflation excluding energy, food, alcohol and tobacco"},
+            "de": {"CPI": "gesamte Verbraucherpreisinflation",
+                   "core CPI": "Kerninflation ohne Energie, Nahrungsmittel, Alkohol und Tabak"},
+            "nl": {"CPI": "totale consumentenprijsinflatie",
+                   "core CPI": "kerninflatie exclusief energie, voedingsmiddelen, alcohol en tabak"},
+        }[lang].get(f["measure"], measure)
     level = f["basis"] == "level"
     when = date.fromisoformat(f["period"] if level else f["period"] + "-01")
     month = MONTHS[lang][when.month]

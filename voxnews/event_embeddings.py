@@ -9,6 +9,9 @@ class E5Encoder:
         self.directory = directory
 
     def __call__(self, articles):
+        from . import providers
+        if providers.cloud_only():
+            raise ValueError("Local embeddings are disabled in the cloud-only demo. Use cloud preparation.")
         try:
             import numpy as np
             import onnxruntime as ort

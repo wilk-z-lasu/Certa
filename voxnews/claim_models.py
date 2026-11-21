@@ -5,7 +5,7 @@ import json
 import re
 from urllib.error import HTTPError, URLError
 
-from .luna import ModelError, canonical_json, object_schema, send_request
+from .luna import ModelError, RequestsPaused, canonical_json, object_schema, send_request
 from .official_releases import digest
 from . import providers
 
@@ -106,7 +106,7 @@ def excerpt(article, evidence=None):
     fragment = text[start:end]
     trimmed = fragment.lstrip()
     start += len(fragment) - len(trimmed)
-    limit = 90 if providers.local() else 22
+    limit = 90
     words = list(re.finditer(r"\S+", trimmed[:limit*18]))[:limit]
     if not words:
         return None
@@ -134,6 +134,7 @@ class ClaimModels:
         self.versions["event_review"] = {"model":reviewer,"prompt":digest([EVENT_REVIEW_PROMPT, EVENT_REVIEW])}
         for version in self.versions.values():
             version["model_revision"] = providers.revision(version["model"])
+            version["provider"] = "ollama" if providers.local() else "openai"
         self.usage = {stage: Counter() for stage in self.names}
         self.db.execute("CREATE TABLE IF NOT EXISTS claim_decision (key TEXT PRIMARY KEY, result TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS claim_batch_split (key TEXT PRIMARY KEY)")
@@ -149,12 +150,18 @@ class ClaimModels:
             "text": {"format": {"type": "json_schema", "name": stage + "_claims", "strict": True,
                                 "schema": schema}},
         }
+        if not providers.local():
+            payload["reasoning"] = {"effort": "low"}
+            payload["max_output_tokens"] = 4096
         key = digest([self.versions[stage],payload])
         cached = self.db.execute("SELECT result FROM claim_decision WHERE key=?", (key,)).fetchone()
         usage = self.usage[stage]
         if cached:
             usage["cache_hits"] += 1
             return json.loads(cached[0])
+        if providers.requests_paused():
+            usage["budget_holds"] += 1
+            raise RequestsPaused(f"{stage} is not cached; paid requests are paused to preserve credits")
         usage["calls"] += 1
         try:
             result = self.transport(payload)

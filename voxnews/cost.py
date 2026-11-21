@@ -50,6 +50,9 @@ def report(run, briefings=(), prices=None, rates_date=None, audio=(), speech_rat
         "classification": inference(run.get("classification", {}), mode, prices),
         "grouping": inference(run["grouping"] or {}, mode, prices),
     }
+    if (run.get("grouping") or {}).get("embedding_usage"):
+        embedding = run["grouping"]["embedding_usage"]
+        stages["embedding"] = inference(embedding, "offline" if embedding.get("provider") == "local" else mode, prices)
     for name, usage in run["verification"]["model_usage"].items():
         stages[name] = inference(usage, mode, prices)
     writers = []

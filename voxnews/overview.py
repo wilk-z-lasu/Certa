@@ -10,6 +10,7 @@ from time import perf_counter
 import zlib
 
 from .event_candidates import fingerprint
+from . import providers
 from .group_events import read_categories, timestamp
 from .geography import classify_regions
 from .luna import canonical_json
@@ -19,7 +20,7 @@ from .trust_briefing import attributed_wording, spoken
 from .verify import load_feeds
 
 
-VERSION = "event-overview-8"
+VERSION = "event-overview-9"
 FIELDS = ("headline", "excerpt", "text_content")
 
 
@@ -78,7 +79,8 @@ def import_claim(c, articles, sources, categories, cutoff, members):
             log.append({"source_id": sid, "role": role, **{k: cell[k] for k in ("locator", "value", "unit")}})
     if c["approved"] and (c["contradict"] or c["article_state"] != "supported"):
         raise ValueError("approved claim carries contradictory evidence")
-    summary = spoken(c, "en") if c["approved"] else c.get("wording", "")
+    wording_version = 2 if providers.cloud_only() else 1
+    summary = spoken(c, "en", version=wording_version) if c["approved"] else c.get("wording", "")
     claim_regions = defaultdict(set)
     if c["approved"]:
         wording_regions = set(classify_regions(c["wording"],"",[])[0]) if not c.get("fact") else set()
@@ -97,6 +99,7 @@ def import_claim(c, articles, sources, categories, cutoff, members):
         translations = {lang: attributed_wording(c["kind"], c["support"][0]["publisher"], text, lang)
                         for lang, text in translations.items()}
     return {"id": c["id"], "type": "checked_claim", "kind": c["kind"], "language": "en", "summary": summary,
+            "wording_version": wording_version,
             "claim_regions":{region:sorted(ids) for region,ids in claim_regions.items()},
             "translations":translations, "evidence_state":c.get("evidence_state",c["article_state"]),
             "translation_failures": c.get("translation_failures", {}),
@@ -233,7 +236,9 @@ def dossier(event, sources, articles, categories, cutoff):
             "languages": sorted({sources[aid]["language"] for aid in members}),
             "members": sorted(members), "origin_count": origin_count, "sources": sources, "scope_evidence": scope,
             "group_needs_review": event["group_needs_review"], "model_versions": event.get("model_versions", {}),
+            "processing": event.get("processing", {}),
             "model_status":event["model_status"], "processing_failure":event.get("failure"),
+            "processing_deferral":event.get("deferral"),
             "event_review": event.get("event_review"),
             "reporting_chronology": sorted(members, key=lambda aid: (timestamp(sources[aid]["published_at"]), aid)),
             "synopsis_ids": synopsis, "sections": sections, "items": items, "disagreements": issues,
@@ -299,7 +304,7 @@ def build(verified, directory, category_path, database):
                     for ref in claim["contradict"]:
                         if ref["article_id"] not in members:
                             external[ref["article_id"]] = source_record(ref, articles, categories)
-                revision = digest([VERSION, event["revision"], members, external])
+                revision = digest([VERSION, providers.cloud_only(), event["revision"], members, external])
                 old = db.execute("SELECT dossier FROM overview_revision WHERE revision=?", (revision,)).fetchone()
                 if old:
                     overview = json.loads(zlib.decompress(old[0]))
@@ -345,7 +350,8 @@ def build(verified, directory, category_path, database):
             except ValueError:  # Windows cannot express a relative path between drives.
                 feed_path = str(directory.resolve())
             db.execute("INSERT OR REPLACE INTO build_info VALUES (1,?)",
-                       (canonical_json({"directory": feed_path, "report": report}),))
+                       (canonical_json({"directory": feed_path, "report": report,
+                                        "processing": snapshot.get("processing", {})}),))
     return report
 
 

@@ -2,7 +2,9 @@
 
 Build a personalized daily overview from reusable event overviews, then deliver it as text and audio. Categorize source stories, group coverage of the same event with a small model, and use a larger model to check the evidence and create an event overview before personalizing the result for listeners.
 
-The [local pipeline](README.md) connects source import, classification, event grouping, checked event dossiers, listener drafts, daily text and feedback through SQLite stores. The text backend has passed automated regression checks and live local-model delivery checks. ElevenLabs verification is deferred at the user's request. Requirements come from [the challenge brief](Sourcera-Track-Description.md), [project instructions](AGENTS.md), and [dataset notes](liquid-briefing-data/README.txt).
+The [local pipeline](README.md) connects source import, classification, event grouping, checked event dossiers, listener drafts, daily text and feedback through SQLite stores. The text backend has passed automated regression checks and live local-model delivery checks. The demo now enforces an isolated cloud-only mode for embeddings, grouping, event processing and composition; archived local results cannot be served in that mode. ElevenLabs verification is deferred at the user's request. Requirements come from [the challenge brief](Sourcera-Track-Description.md), [project instructions](AGENTS.md), and [dataset notes](liquid-briefing-data/README.txt).
+
+The cloud-only handoff is documented in [HANDOFF.md](HANDOFF.md). Paid requests are paused. Cached cloud work provides 27 approved statements from 14 completed event checks; 26 further checks are deferred by the credit limit. Final cloud composition and audio verification remain outstanding.
 
 ## Pipeline and terminology
 
@@ -50,7 +52,7 @@ Only validated event overview revisions enter the listener retrieval pool. A pro
 
 ### Backend verification on November 21
 
-Run `python3 tests/check_backend.py` for the non-audio regression checks. Checked tasks below reflect the demonstrated text backend. Audio acceptance remains deferred. All 61 non-audio regression tests pass. The suite covers source import and revisions, historical cutoffs, classification, grouping, checked dossiers, broad event context, profile setup, immutable text delivery, concurrent composition, daily feedback and listener isolation. Real-dataset two-day text examples and their source audits are under `output/backend-audit/`. The evaluation documents record the scope and limitations of each run.
+Run `python3 tests/check_backend.py` for the non-audio regression checks. Checked tasks below reflect the demonstrated text backend. Audio acceptance remains deferred. All 70 non-audio regression tests pass. The suite covers source import and revisions, historical cutoffs, classification, grouping, checked dossiers, broad event context, profile setup, immutable text delivery, concurrent composition, daily feedback and listener isolation. Real-dataset two-day text examples and their source audits are under `output/backend-audit/`. The evaluation documents record the scope and limitations of each run.
 
 | Plan area | Current evidence and remaining verification |
 | --- | --- |

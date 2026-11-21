@@ -4,7 +4,6 @@ from collections import Counter
 from contextlib import closing
 from dataclasses import dataclass
 import json
-import os
 from pathlib import Path
 import sqlite3
 from time import sleep
@@ -70,6 +69,10 @@ class ModelError(RuntimeError):
     pass
 
 
+class RequestsPaused(ModelError):
+    """Work deferred without making a paid request."""
+
+
 def canonical_json(value):
     return json.dumps(value, separators=(",", ":"), ensure_ascii=True, sort_keys=True)
 
@@ -87,9 +90,13 @@ def request_payload(pairs, model=MODEL):
 
 
 def send_request(payload):
+    try:
+        providers.require_requests()
+    except ValueError as error:
+        raise RequestsPaused(str(error)) from error
     if providers.local():
         return providers.local_request(payload)
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    key = providers.api_key()
     if not key:
         raise ModelError("set OPENAI_API_KEY to request uncached GPT-6 Luna decisions")
     request = Request(

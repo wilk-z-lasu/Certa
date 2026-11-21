@@ -13,6 +13,7 @@ from md_to_speech import load_dotenv
 from . import providers
 from .claim_models import ClaimModels
 from .category_review import CategoryReview
+from .cloud_embeddings import CloudEncoder
 from .event_embeddings import E5Encoder
 from .group_events import run as group_events
 from .luna import LunaJudge, ModelError, canonical_json
@@ -25,6 +26,12 @@ def prepare(
     directory, out, day, lookback, *, offline=False, embedding_dir=None, model_events=None, previous=None
 ):
     started = perf_counter()
+    if providers.cloud_only():
+        providers.local()
+        if offline:
+            raise ValueError("Rules-only preparation is disabled in the cloud-only demo.")
+        if not providers.api_key():
+            raise ValueError("Configure OPENAI_API_KEY in .env before preparing the cloud-only demo.")
     if not 1 <= lookback <= 366:
         raise ValueError("lookback must be between 1 and 366 days")
     if model_events is not None and model_events < 1:
@@ -55,17 +62,23 @@ def prepare(
         events, models, grouping = None, None, None
         if not offline:
             events = stage / "events.jsonl"
+            encoder = (CloudEncoder(out / "embedding-cache.sqlite3") if providers.cloud_only()
+                       else E5Encoder(embedding_dir or out / "e5-small"))
             grouping = group_events(
                 feeds,
                 categories,
                 events,
                 start=start,
                 before=cutoff,
-                encoder=E5Encoder(embedding_dir or out / "e5-small"),
+                encoder=encoder,
                 judge=LunaJudge(out / "luna-decisions.sqlite3"),
                 previous=previous,
             )
             models = ClaimModels(db, providers.model("extraction"), providers.model("review"))
+            grouping["embedding_usage"] = getattr(encoder, "usage", {"model":"multilingual-e5-small", "provider":"local"})
+        processing = {"provider": "offline" if offline else ("ollama" if providers.local() else "openai"),
+                      "embedding_provider": "openai" if providers.cloud_only() else "local",
+                      "grouping_provider": "offline" if offline else ("ollama" if providers.local() else "openai")}
         snapshot = verify(
             feeds,
             cutoff,
@@ -76,8 +89,10 @@ def prepare(
             model_events=0 if offline else (model_events or imported["articles"]),
             model_overviews=not offline,
             isolate_failures=not offline,
+            processing=processing,
         )
         verified = stage / "verification.json"
+        snapshot["processing"] = processing
         write_atomic(verified, canonical_json(snapshot))
         publication = build(verified, feeds, categories, out / "event-overviews.sqlite3")
         if events:
@@ -106,7 +121,7 @@ def main():
     p.add_argument("--date", type=date.fromisoformat, required=True)
     p.add_argument("--lookback-days", type=int, default=7)
     p.add_argument("--input-dir", type=Path, default=Path("liquid-briefing-data"))
-    p.add_argument("--output-dir", type=Path, default=Path("output"))
+    p.add_argument("--output-dir", type=Path, default=Path("output/cloud-demo" if providers.cloud_only() else "output"))
     p.add_argument("--embedding-dir", type=Path)
     p.add_argument("--model-events", type=int)
     p.add_argument("--previous", type=Path, help="Earlier grouped events for stable IDs")

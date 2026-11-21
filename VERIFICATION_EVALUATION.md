@@ -1,5 +1,9 @@
 # Claim verification evaluation
 
+## Cloud-only handoff and credit pause
+
+The cloud-only build was interrupted at the user’s request to preserve remaining credits. Cached work was finalized with zero new API calls. It publishes 27 approved statements from 14 completed checks, with 26 further checks explicitly deferred and zero failed events. Source checks confirm the new headline/core CPI labels and publication-date formatting. Final cloud composition has not been tested. See [HANDOFF.md](HANDOFF.md) for the exact state, cache paths, grouping limitations and resume commands. The local-model measurements below describe earlier runs.
+
 ## Final local text run, November 21
 
 The final `event-check-7` run imported all six feeds and accounted for 1,740 articles, 1,498 reporting origins and 1,464 events. A 115-day evaluation window includes the long Zacks date range. The normal preparation default remains seven days. The run explicitly limited model checking to 40 of 1,162 eligible event revisions. Thirty-seven completed and three were quarantined for invalid model output. The catalogue exposes 76 approved statements across 29 events. Other material remains internal and cannot supply listener text. The 302 events with unresolved grouping remain outside listener retrieval.

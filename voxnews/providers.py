@@ -1,7 +1,8 @@
-"""Model role configuration and structured generation on the local Ollama server."""
+"""Explicit cloud/local model routing, with a cloud-only demo policy."""
 
 import json
 import os
+from pathlib import Path
 from functools import lru_cache
 from urllib.error import HTTPError
 from urllib.request import Request, ProxyHandler, HTTPRedirectHandler, build_opener
@@ -13,6 +14,7 @@ LOCAL = {
     "composition": "qwen3.5:4b-mlx",
 }
 HOSTED = {
+    "embedding": "text-embedding-3-small",
     "grouping": "gpt-6-luna",
     "extraction": "gpt-6-luna",
     "review": "gpt-6.2-astra",
@@ -20,18 +22,62 @@ HOSTED = {
 }
 
 
+def setting(name, default=None):
+    if name in os.environ:
+        return os.environ[name]
+    for filename in (".env", ".env.local"):
+        path = Path(__file__).resolve().parents[1] / filename
+        if path.is_file():
+            for line in path.read_text().splitlines():
+                key, separator, value = line.strip().removeprefix("export ").partition("=")
+                if separator and key.strip() == name:
+                    return value.strip().strip('"\'')
+    return default
+
+
+def cloud_only():
+    return setting("VOXNEWS_CLOUD_ONLY", "0").lower() in {"1", "true", "yes"}
+
+
+def requests_paused():
+    return setting("VOXNEWS_API_REQUESTS_PAUSED", "0").lower() in {"1", "true", "yes"}
+
+
+def require_requests():
+    if requests_paused():
+        raise ValueError("Paid API requests are paused to preserve credits. Cached cloud results remain available.")
+
+
+def api_key():
+    return setting("OPENAI_API_KEY", "").strip() or None
+
+
 def local():
-    value = os.getenv("VOXNEWS_PROVIDER", "openai")
+    value = setting("VOXNEWS_PROVIDER", "openai")
     if value not in {"openai", "ollama"}:
         raise ValueError("VOXNEWS_PROVIDER must be openai or ollama")
+    if cloud_only() and value != "openai":
+        raise ValueError("Cloud-only demo requires VOXNEWS_PROVIDER=openai. Local models are disabled.")
     return value == "ollama"
 
 
 def model(role):
     fallback = (LOCAL if local() else HOSTED)[role]
     if role == "composition" and not local():
-        fallback = os.getenv("OPENAI_MODEL") or fallback
-    return os.getenv("VOXNEWS_" + role.upper() + "_MODEL") or fallback
+        fallback = setting("OPENAI_MODEL") or fallback
+    name = setting("VOXNEWS_" + role.upper() + "_MODEL") or fallback
+    if cloud_only() and (name in LOCAL.values() or name.endswith("-mlx")):
+        raise ValueError(f"Cloud-only demo cannot use the local {role} model {name!r}.")
+    return name
+
+
+def cloud_event(event):
+    processing = event.get("processing", {})
+    versions = event.get("model_versions", {})
+    return (processing.get("provider") == "openai" and processing.get("embedding_provider") == "openai"
+            and processing.get("grouping_provider") == "openai" and event.get("model_status") == "reviewed"
+            and all(versions.get(stage, {}).get("provider") == "openai"
+                    for stage in ("extract", "review", "event_review", "overview", "translation")))
 
 
 class LocalOnly(HTTPRedirectHandler):
@@ -54,6 +100,8 @@ def revision(name):
 
 
 def local_request(payload):
+    if cloud_only():
+        raise ValueError("Local inference is disabled in the cloud-only demo.")
     schema = payload.get("text", {}).get("format", {}).get("schema")
     body = {
         "model": payload["model"],

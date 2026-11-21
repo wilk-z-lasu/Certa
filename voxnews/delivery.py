@@ -7,6 +7,7 @@ from build_preai import database_path
 from generate_script import compose_draft, validate_daily
 from .editions import personal_draft
 from .listeners import Conflict, current, delivered, previous_claims, record_delivery, storage
+from . import providers
 
 
 def compose_day(directory, listener, day, expected_version=None):
@@ -15,6 +16,8 @@ def compose_day(directory, listener, day, expected_version=None):
         db.execute("BEGIN IMMEDIATE")
         existing = delivered(db, listener, day)
         if existing is not None:
+            if providers.cloud_only() and (existing.get("provider") != "openai" or not existing.get("cloud_only")):
+                raise Conflict("This saved edition used local or offline processing. Use the isolated cloud demo.")
             return existing
         profile = current(db, listener)
         if not profile:

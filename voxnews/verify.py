@@ -16,7 +16,7 @@ from .categorization import validate_article
 from .claim_models import ClaimModels, excerpt
 from .event_candidates import fingerprint
 from .group_events import indexed_jsonl, read_jsonl, timestamp
-from .luna import MODEL, ModelError, canonical_json
+from .luna import MODEL, ModelError, RequestsPaused, canonical_json
 from .official_releases import DEFAULT_PACK, ReleaseIndex, digest, number, safe_url, validate_dimensions
 from .number_validation import source_numbers_support, translation_numbers_match
 
@@ -616,7 +616,7 @@ def edit_overview_batch(event, claims, articles, models):
 
 
 def verify(directory, before, db, *, packs=(DEFAULT_PACK,), start=None, events=None, origins=None,
-           models=None, model_events=0, audit_every=0, model_overviews=False, isolate_failures=False):
+           models=None, model_events=0, audit_every=0, model_overviews=False, isolate_failures=False, processing=None):
     if start and start >= before:
         raise ValueError("start must be earlier than cutoff")
     if model_events < 0 or audit_every < 0 or (model_events and models is None):
@@ -664,12 +664,15 @@ def verify(directory, before, db, *, packs=(DEFAULT_PACK,), start=None, events=N
     def hold(event, stage, exc):
         if not isolate_failures:
             raise exc
-        event["model_status"] = "failed"
-        event["failure"] = {"stage":stage,"error":str(exc)}
+        deferred = isinstance(exc, RequestsPaused)
+        event["model_status"] = "deferred" if deferred else "failed"
+        event["deferral" if deferred else "failure"] = {"stage":stage,"error":str(exc)}
         event.pop("overview_claim_ids",None)
         for c in event["claims"]:
             c["approved"] = False
-            c["reasons"].append("event_review_failed")
+            c["reasons"].append("api_budget_paused" if deferred else "event_review_failed")
+        if deferred:
+            return
         with db:
             db.execute("CREATE TABLE IF NOT EXISTS event_failure(id TEXT PRIMARY KEY, event_id TEXT, detail TEXT)")
             db.execute("INSERT OR IGNORE INTO event_failure VALUES(?,?,?)",(digest(event),event["event_id"],canonical_json(event["failure"])))
@@ -699,6 +702,8 @@ def verify(directory, before, db, *, packs=(DEFAULT_PACK,), start=None, events=N
                 claim["reasons"] = sorted(set(claim["reasons"]))
                 claim["supporting_origins"] = sorted({r["origin"] for r in claim["support"]})
             event["rule_version"] = RULE_VERSION
+            if processing is not None:
+                event["processing"] = processing
             event["verification_version"] = VERIFICATION_VERSION
             event["revision"] = digest(event)
             db.execute("INSERT OR IGNORE INTO verified_event VALUES (?,?,?)",
@@ -717,6 +722,7 @@ def verify(directory, before, db, *, packs=(DEFAULT_PACK,), start=None, events=N
         "rule_cache_hits": counts["rule_cache_hits"], "eligible_model_events": len(pending),
         "model_events_processed": sum(e["model_status"] == "reviewed" for e in records),
         "failed_events": sum(e["model_status"] == "failed" for e in records),
+        "deferred_events": sum(e["model_status"] == "deferred" for e in records),
         "triage": dict(Counter(e["triage"] for e in records)),
         "official_status": dict(Counter(c["official_state"] for c in claims)),
         "article_status": dict(Counter(c["article_state"] for c in claims)),

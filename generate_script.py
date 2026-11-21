@@ -1,7 +1,7 @@
 """Compose a briefing by selecting exact, cited sentences from a catalogue draft."""
 import json
-import os
 from copy import deepcopy
+from datetime import date
 from time import perf_counter
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 
 from voxnews import providers
 from voxnews.official_releases import digest
-from voxnews.trust_briefing import DISCLOSURE
+from voxnews.trust_briefing import DISCLOSURE, MONTHS
 from voxnews.verify import write_atomic
 
 
@@ -43,20 +43,14 @@ class ScriptError(Exception):
 
 
 def api_key():
-    try:
-        lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
-        lines = []
-    for line in lines:
-        name, separator, value = line.strip().removeprefix("export ").partition("=")
-        if separator and name.strip() == "OPENAI_API_KEY":
-            key = value.strip().strip('"\'')
-            if key:
-                return key
-    return os.environ.get("OPENAI_API_KEY")
+    return providers.api_key()
 
 
 def request_script(draft, profile, key):
+    try:
+        providers.require_requests()
+    except ValueError as error:
+        raise ScriptError(str(error)) from error
     aliases = {}
     events = []
     for event in draft["events"]:
@@ -144,12 +138,22 @@ UNRESOLVED = {
     "nl": "Over sommige details van dit verhaal bestaat nog onzekerheid.",
     "de": "Bei einigen Details dieser Geschichte bestehen noch Unklarheiten.",
 }
+PUBLICATION_DATE = {"en": "Reporting published on {}.", "de": "Berichtet am {}.", "nl": "Gepubliceerd op {}."}
 
 
-def framed_segments(draft, claims):
+def spoken_date(value, language):
+    when = date.fromisoformat(value)
+    day = str(when.day) + ("." if language == "de" else "")
+    return f"{day} {MONTHS[language][when.month]} {when.year}"
+
+
+def framed_segments(draft, claims, *, version=1):
     lang = draft["selection"]["language"]
     intro, local, general, context, update, closing, no_local, sparse = FRAMING[lang]
-    opening = [DISCLOSURE[lang], intro.format(draft["date"])]
+    if version >= 2:
+        context = PUBLICATION_DATE[lang]
+    briefing_date = spoken_date(draft["date"], lang) if version >= 2 else draft["date"]
+    opening = [DISCLOSURE[lang], intro.format(briefing_date)]
     if draft["selection"]["region"] and not any(c["local"] for c in claims):
         opening.append(no_local)
     if draft["coverage"]["sparse"]:
@@ -167,7 +171,7 @@ def framed_segments(draft, claims):
             if not previous or previous[0] != section:
                 lead.append(local if c["local"] else general)
             if report_day < draft["date"]:
-                lead.append(context.format(report_day))
+                lead.append(context.format(spoken_date(report_day, lang) if version >= 2 else report_day))
             if event["development"] == "update":
                 lead.append(update)
             if "unresolved_reporting" in event.get("caveats", []) and event["event_id"] not in warned:
@@ -188,12 +192,14 @@ def validate_daily(draft, briefing):
             or briefing["selection"] != draft["selection"]
             or any(c != approved.get(c["claim_id"]) for c in claims)):
         raise ScriptError("A final claim differs from the approved draft.")
-    blocks = framed_segments(draft,claims)
+    blocks = framed_segments(draft,claims,version=briefing.get("format_version",1))
     if briefing["spoken_segments"] != blocks or briefing["script"] != "\n\n".join(b["text"] for b in blocks)+"\n":
         raise ScriptError("The final transcript differs from its checked claims or caveats.")
 
 
 def compose_draft(draft, profile):
+    if providers.cloud_only() and any(not providers.cloud_event(event) for event in draft["events"]):
+        raise ScriptError("Cloud-only demo requires cloud-generated event overviews. Cached local results are excluded.")
     segments = {}
     for event in draft["events"]:
         for claim in event["claims"]:
@@ -201,6 +207,8 @@ def compose_draft(draft, profile):
     if not segments:
         raise ScriptError("No approved claims are available for the briefing.")
     key = "local" if providers.local() else api_key()
+    if providers.cloud_only() and not key:
+        raise ScriptError("The cloud-only demo requires OPENAI_API_KEY. Local and offline fallback are disabled.")
     started = perf_counter()
     response = request_script(draft, profile, key) if key else list(segments)
     chosen = response.get("claim_ids") if isinstance(response,dict) else response
@@ -216,10 +224,12 @@ def compose_draft(draft, profile):
         # Keep local and general reporting distinct and each event together within its section.
         event_order = list(dict.fromkeys(c["event_id"] for c in ordered))
         ordered.sort(key=lambda c:(not c["local"],event_order.index(c["event_id"])))
-        blocks = framed_segments(draft,ordered)
+        blocks = framed_segments(draft,ordered,version=2)
         result = {"script":"\n\n".join(b["text"] for b in blocks)+"\n", "segments":ordered,"spoken_segments":blocks,
                   "selection":draft["selection"], "composition":"model_selection" if key else "catalogue_order",
                   "validation":"passed","provider":("ollama" if providers.local() else "openai") if key else "offline","model":providers.model("composition") if key else None,
+                  "format_version":2,
+                  "cloud_only":providers.cloud_only(),
                   "model_revision":providers.revision(providers.model("composition")) if key else None,
                   "prompt_version":digest([INSTRUCTIONS,RESULT_FORMAT]), "elapsed_seconds":round(perf_counter()-started,3),
                   "usage":response.get("usage",{}) if isinstance(response,dict) else {}}
@@ -236,6 +246,8 @@ def compose_draft(draft, profile):
         prose.append(claim["text"])
     script = "\n\n".join(prose) + "\n"
     return {"script": script, "segments": ordered, "selection": draft["selection"],
+            "cloud_only":providers.cloud_only(),
+            "provider":("ollama" if providers.local() else "openai") if key else "offline",
             "composition": "model_selection" if key else "catalogue_order"}
 
 

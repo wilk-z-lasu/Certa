@@ -139,6 +139,15 @@ class DailyBackendTest(unittest.TestCase):
         with closing(sqlite3.connect(store)) as db:
             self.assertEqual(db.execute("SELECT count(*) FROM story_version").fetchone()[0], 3)
 
+    def test_cloud_only_never_replays_a_saved_local_or_offline_edition(self):
+        directory=self.root/"cloud-history"
+        with storage(directory) as db:
+            profile=self.profile(db,"one","GB")
+            self.edition(db,"one",profile,"2026-11-19")
+        with patch.dict("os.environ",{"VOXNEWS_CLOUD_ONLY":"1","VOXNEWS_PROVIDER":"openai"}):
+            with self.assertRaisesRegex(Conflict,"isolated cloud demo"):
+                compose_day(directory,"one","2026-11-19")
+
     def test_event_uncertainty_caveat_cannot_be_removed_from_final_text(self):
         from generate_script import UNRESOLVED
         with storage(self.root / "caveat-listener") as db:

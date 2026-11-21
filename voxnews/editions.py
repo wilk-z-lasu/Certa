@@ -111,6 +111,9 @@ def personal_draft(path, profile, day, history):
                 {
                     "event_id": eid,
                     "revision": revision,
+                    "processing": event.get("processing", {}),
+                    "model_status": event.get("model_status"),
+                    "model_versions": event.get("model_versions", {}),
                     "overview": {
                         "title": event["title"],
                         "limitations": event["limitations"],

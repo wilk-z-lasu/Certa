@@ -5,6 +5,7 @@ from contextlib import closing
 from pathlib import Path
 
 from voxnews.geography import COUNTRIES
+from voxnews import providers
 from voxnews.official_releases import safe_url
 from voxnews.overview_reader import catalogue, connect, get_event
 from voxnews.topic_rules import TOPICS, TOPIC_LABELS
@@ -21,7 +22,8 @@ class NoCoverage(ValueError):
 
 
 def database_path():
-    return Path(os.environ.get("VOXNEWS_OVERVIEW_DB") or ROOT / "output" / "event-overviews.sqlite3")
+    default = ROOT / "output" / ("cloud-demo" if providers.cloud_only() else "") / "event-overviews.sqlite3"
+    return Path(os.environ.get("VOXNEWS_OVERVIEW_DB") or default)
 
 
 def preferences(topics, region=None, language="en"):
@@ -35,6 +37,8 @@ def preferences(topics, region=None, language="en"):
 
 
 def approved_claim(item, event, language, region):
+    if providers.cloud_only() and not providers.cloud_event(event):
+        return None
     if (item["type"] != "checked_claim" or item["draft_use"] != "approved_wording"
             or item["article_state"] != "supported" or item["disagreements"]):
         return None
@@ -42,7 +46,7 @@ def approved_claim(item, event, language, region):
     if fact:
         if region and fact["geo"] != region:
             return None
-        wording = spoken_figure(fact, language)
+        wording = spoken_figure(fact, language, version=item.get("wording_version", 1))
     else:
         if region and region not in item.get("claim_regions",{}):
             return None
@@ -76,6 +80,8 @@ def eligible_events(path, language="en", region=None, topics=()):
                       if (claim := approved_claim(item, event, language, region))]
             if claims:
                 yield {"event_id": row["event_id"], "revision": row["revision"],
+                       "processing": event.get("processing", {}), "model_status": event.get("model_status"),
+                       "model_versions": event.get("model_versions", {}),
                        "topics": row["topics"], "claims": claims,
                        "caveats": ["unresolved_reporting"] if event["disagreements"] else []}
 

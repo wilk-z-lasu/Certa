@@ -71,6 +71,9 @@ class CategoryReview:
             ids = json.loads(row[0])
             self.usage["cache_hits"] += 1
         else:
+            if providers.requests_paused():
+                self.usage["held"] += 1
+                return record
             self.usage["calls"] += 1
             response = self.transport(
                 {
@@ -79,6 +82,7 @@ class CategoryReview:
                     "input": canonical_json(packet),
                     "store": False,
                     "max_output_tokens": 180,
+                    "reasoning": {"effort": "none" if "luna" in self.name else "low"},
                     "text": {
                         "format": {
                             "type": "json_schema",
